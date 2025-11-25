@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN" "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<suppressions>
+    <!-- Suppress all checkstyle rules for examples -->
+    <suppress files=".*Example.*\.java" checks=".*"/>
+    <!-- Suppress specific rules for transformation classes -->
+    <suppress files=".*Transformation.*\.java" checks="LineLength"/>
+    <suppress files=".*Transformation.*\.java" checks="MethodLength"/>
+</suppressions>

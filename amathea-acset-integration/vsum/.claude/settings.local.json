@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/10239/galette-vitruv/amathea-acset-integration/**)",
+      "Read(//c/Users/10239/galette-vitruv/knarr-runtime/src/main/java/edu/neu/ccs/prl/galette/examples/transformation/**)",
+      "Read(//c/Users/10239/galette-vitruv/knarr-runtime/src/main/java/edu/neu/ccs/prl/galette/vitruvius/**)",
+      "Bash(chmod:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

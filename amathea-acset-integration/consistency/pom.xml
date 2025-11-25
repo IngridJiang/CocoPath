@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    
+    <parent>
+        <groupId>edu.neu.ccs.prl.galette</groupId>
+        <artifactId>amathea-acset-integration</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>amathea-acset-consistency</artifactId>
+    <name>Amathea-ASCET Consistency</name>
+    <description>Vitruvius reactions for Amathea-ASCET transformations</description>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <!-- Model dependency -->
+        <dependency>
+            <groupId>edu.neu.ccs.prl.galette</groupId>
+            <artifactId>amathea-acset-model</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Vitruvius dependencies for reactions -->
+        <dependency>
+            <groupId>tools.vitruv</groupId>
+            <artifactId>tools.vitruv.change.composite</artifactId>
+            <version>3.1.2</version>
+        </dependency>
+        <dependency>
+            <groupId>tools.vitruv</groupId>
+            <artifactId>tools.vitruv.change.propagation</artifactId>
+            <version>3.1.2</version>
+        </dependency>
+        <dependency>
+            <groupId>tools.vitruv</groupId>
+            <artifactId>tools.vitruv.dsls.reactions.runtime</artifactId>
+            <version>3.1.2</version>
+        </dependency>
+
+        <!-- EMF dependency -->
+        <dependency>
+            <groupId>org.eclipse.emf</groupId>
+            <artifactId>org.eclipse.emf.ecore</artifactId>
+            <version>2.26.0</version>
+        </dependency>
+    </dependencies>
+
+    <!-- No custom build configuration - reactions are in src/main/java -->
+</project>

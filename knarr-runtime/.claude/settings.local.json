@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn clean:*)",
+      "Bash(mvn exec:java:*)",
+      "Bash(python:*)",
+      "Bash(Get-ExecutionPolicy)",
+      "Bash(powershell:*)",
+      "Bash(run.cmd)",
+      "Bash(dir:*)",
+      "Read(//c/Users/10239/galette-vitruv/amathea-acset-integration/consistency/src/main/reactions/**)",
+      "Read(//c/Users/10239/galette-vitruv/**)",
+      "Read(//c/Users/10239/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

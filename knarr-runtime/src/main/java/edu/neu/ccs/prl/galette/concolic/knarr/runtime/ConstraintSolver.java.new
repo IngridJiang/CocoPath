@@ -1,0 +1,79 @@
+package edu.neu.ccs.prl.galette.concolic.knarr.runtime;
+
+import java.util.*;
+import za.ac.sun.cs.green.expr.*;
+import za.ac.sun.cs.green.expr.Operation.Operator;
+
+/**
+ *
+ * @purpose Constraint solving with Green solver integration
+ * @feature Automatic constraint negation for path exploration
+ * @feature Support for integer, real, and string constraints
+ * @feature Solution caching and optimization
+ *
+ */
+public class ConstraintSolver {
+
+    private static final boolean DEBUG = Boolean.getBoolean("constraint.solver.debug");
+
+    public static Expression negateConstraint(Expression constraint) {
+        if (constraint == null) {
+            return null;
+        }
+
+        if (constraint instanceof BinaryOperation) {
+            BinaryOperation binOp = (BinaryOperation) constraint;
+            Operator op = binOp.getOperator();
+
+            if (isComparisonOperator(op)) {
+                Operator negatedOp = negateOperator(op);
+                return new BinaryOperation(negatedOp, binOp.left, binOp.right);
+            }
+
+            if (op == Operator.AND) {
+                Expression leftNeg = negateConstraint(binOp.left);
+                Expression rightNeg = negateConstraint(binOp.right);
+                return new BinaryOperation(Operator.OR, leftNeg, rightNeg);
+            } else if (op == Operator.OR) {
+                Expression leftNeg = negateConstraint(binOp.left);
+                Expression rightNeg = negateConstraint(binOp.right);
+                return new BinaryOperation(Operator.AND, leftNeg, rightNeg);
+            }
+        } else if (constraint instanceof UnaryOperation) {
+            UnaryOperation unOp = (UnaryOperation) constraint;
+            if (unOp.getOperator() == Operator.NOT) {
+                return unOp.getOperand(0);
+            }
+        }
+
+        return new UnaryOperation(Operator.NOT, constraint);
+    }
+
+    private static Operator negateOperator(Operator op) {
+        switch (op) {
+            case EQ:
+                return Operator.NE;
+            case NE:
+                return Operator.EQ;
+            case GT:
+                return Operator.LE;
+            case GE:
+                return Operator.LT;
+            case LT:
+                return Operator.GE;
+            case LE:
+                return Operator.GT;
+            default:
+                return op;
+        }
+    }
+
+    private static boolean isComparisonOperator(Operator op) {
+        return op == Operator.EQ
+                || op == Operator.NE
+                || op == Operator.GT
+                || op == Operator.GE
+                || op == Operator.LT
+                || op == Operator.LE;
+    }
+

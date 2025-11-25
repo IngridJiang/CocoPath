@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    
+    <parent>
+        <groupId>edu.neu.ccs.prl.galette</groupId>
+        <artifactId>amathea-acset-integration</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>amathea-acset-vsum</artifactId>
+    <name>Amathea-ASCET VSUM</name>
+    <description>VSUM implementation with Galette symbolic execution integration</description>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <!-- Model and ViewType dependencies -->
+        <dependency>
+            <groupId>edu.neu.ccs.prl.galette</groupId>
+            <artifactId>amathea-acset-model</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Consistency (reactions) dependency -->
+        <dependency>
+            <groupId>edu.neu.ccs.prl.galette</groupId>
+            <artifactId>amathea-acset-consistency</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Galette dependencies for symbolic execution -->
+        <dependency>
+            <groupId>edu.neu.ccs.prl.galette</groupId>
+            <artifactId>galette-agent</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- NOTE: These dependencies must be installed from external Amathea-acset first -->
+        <!-- Run: cd C:\Users\10239\Amathea-acset && mvn install -DskipTests -->
+
+        <!-- Vitruvius framework dependencies -->
+        <dependency>
+            <groupId>tools.vitruv</groupId>
+            <artifactId>tools.vitruv.change.interaction</artifactId>
+            <version>3.1.2</version>
+        </dependency>
+        <dependency>
+            <groupId>tools.vitruv</groupId>
+            <artifactId>tools.vitruv.change.propagation</artifactId>
+            <version>3.1.2</version>
+        </dependency>
+        <dependency>
+            <groupId>tools.vitruv</groupId>
+            <artifactId>tools.vitruv.change.testutils.integration</artifactId>
+            <version>3.1.2</version>
+        </dependency>
+        <dependency>
+            <groupId>tools.vitruv</groupId>
+            <artifactId>tools.vitruv.framework.views</artifactId>
+            <version>3.1.2</version>
+        </dependency>
+        <dependency>
+            <groupId>tools.vitruv</groupId>
+            <artifactId>tools.vitruv.framework.vsum</artifactId>
+            <version>3.1.2</version>
+        </dependency>
+
+        <!-- EMF dependencies -->
+        <dependency>
+            <groupId>org.eclipse.emf</groupId>
+            <artifactId>org.eclipse.emf.ecore</artifactId>
+            <version>2.26.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.emf</groupId>
+            <artifactId>org.eclipse.emf.ecore.xmi</artifactId>
+            <version>2.16.0</version>
+        </dependency>
+    </dependencies>
+
+</project>

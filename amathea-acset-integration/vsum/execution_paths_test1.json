@@ -1,0 +1,46 @@
+{
+  "paths": [
+    {
+      "pathId": 1,
+      "executionTime": 0,
+      "inputs": {"taskName": "MyTask", "user_choice": 0, "preemptionType": "PREEMPTIVE"},
+      "constraints": ["user_choice == 0"],
+      "outputs": {"result": "InterruptTask{name='MyTask', triggeredBy=HW_INTERRUPT}"}
+    },
+    {
+      "pathId": 2,
+      "executionTime": 0,
+      "inputs": {"taskName": "MyTask", "user_choice": 1, "preemptionType": "PREEMPTIVE"},
+      "constraints": ["user_choice == 1"],
+      "outputs": {"result": "PeriodicTask{name='MyTask', period=10ms, delay=0ms}"}
+    },
+    {
+      "pathId": 3,
+      "executionTime": 0,
+      "inputs": {"taskName": "MyTask", "user_choice": 2, "preemptionType": "PREEMPTIVE"},
+      "constraints": ["user_choice == 2"],
+      "outputs": {"result": "SoftwareTask{name='MyTask', triggeredBy=SW_EVENT}"}
+    },
+    {
+      "pathId": 4,
+      "executionTime": 0,
+      "inputs": {"taskName": "MyTask", "user_choice": 3, "preemptionType": "PREEMPTIVE"},
+      "constraints": ["user_choice == 3"],
+      "outputs": {"result": "TimeTableTask{name='MyTask', schedule=PREDEFINED}"}
+    },
+    {
+      "pathId": 5,
+      "executionTime": 0,
+      "inputs": {"taskName": "MyTask", "user_choice": 4, "preemptionType": "PREEMPTIVE"},
+      "constraints": ["user_choice == 4"],
+      "outputs": {"result": "Transformation deferred for MyTask"}
+    }
+  ],
+  "decisionPoints": [
+    {
+      "variable": "user_choice",
+      "condition": "comparison",
+      "possibleValues": [0, 1, 2, 3, 4]
+    }
+  ]
+}
