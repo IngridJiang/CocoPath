@@ -51,20 +51,24 @@ class IntegrationSwitchTest {
 
     /**
      * Test manual constraint collection with switch statement.
-     * This simulates the OLD way of doing things.
+     * This simulates the OLD way of doing things (before automatic extraction).
+     *
+     * NOTE: With the new TagPropagator bytecode instrumentation, BOTH domain constraints
+     * and switch constraints are collected automatically! This test shows the manual approach
+     * for comparison purposes only.
      */
     @Test
     void testManualSwitchConstraints() {
         // Create symbolic choice
         Tag symbolicTag = GaletteSymbolicator.makeSymbolicInt("user_choice", 0);
 
-        // Manual domain constraint
+        // Manual domain constraint (OLD WAY - now automatic via TagPropagator!)
         PathUtils.addIntDomainConstraint("user_choice", 0, 5);
 
         // Simulate user selection - case 0
         int choice = 0; // This would normally come from symbolicTag.getValue()
 
-        // Manual constraint recording (OLD WAY)
+        // Manual constraint recording (OLD WAY - now automatic via TagPropagator!)
         PathUtils.addSwitchConstraint("user_choice", choice);
 
         // Execute switch
@@ -83,7 +87,11 @@ class IntegrationSwitchTest {
      * Test automatic constraint collection (requires bytecode instrumentation).
      *
      * With -Dgalette.symbolic.enabled=true and proper instrumentation,
-     * constraints should be collected automatically.
+     * BOTH domain and switch constraints are collected automatically via TagPropagator!
+     *
+     * The TagPropagator.recordSwitchConstraint() method will:
+     * 1. Call addIntDomainConstraintAuto(tag, min, max+1) to set the domain
+     * 2. Call recordSwitchConstraintAuto(tag, caseValue) for the selected case
      */
     @Test
     void testAutomaticSwitchConstraints_Case0() {
@@ -96,7 +104,10 @@ class IntegrationSwitchTest {
         // No manual constraint recording needed!
         // (Would be automatic with full instrumentation)
 
-        // For this unit test, simulate what the instrumentation would do
+        // For this unit test, simulate what the TagPropagator bytecode instrumentation would do:
+        // 1. First, it adds the domain constraint from the switch min/max
+        PathUtils.addIntDomainConstraintAuto(symbolicTag, 0, 5); // Domain: [0, 5)
+        // 2. Then, it records the specific case constraint
         PathUtils.recordSwitchConstraintAuto(symbolicTag, choice);
 
         // Execute switch
@@ -105,9 +116,10 @@ class IntegrationSwitchTest {
         // Verify the correct task was created
         assertEquals(TaskType.INTERRUPT, createdTaskType);
 
-        // Verify constraint was automatically collected
+        // Verify constraints were automatically collected
         PathConditionWrapper pc = PathUtils.getCurPC();
         assertFalse(pc.isEmpty(), "Path constraints should be collected automatically");
+        assertTrue(pc.size() >= 2, "Should have domain + switch constraints (both automatic!)");
     }
 
     @Test

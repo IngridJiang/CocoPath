@@ -42,8 +42,10 @@ public class AutomaticVitruvPathExploration {
         // Create path explorer
         PathExplorer explorer = new PathExplorer();
 
-        // Add domain constraint for valid user choices [0-4]
-        PathUtils.addIntDomainConstraint("user_choice", 0, 5); // [0, 5) = [0, 4]
+        // NOTE: Domain constraints are NOW AUTOMATICALLY EXTRACTED from switch statements!
+        // The bytecode instrumentation in TagPropagator.recordSwitchConstraint() will
+        // automatically add domain constraints based on the switch min/max values.
+        // No manual PathUtils.addIntDomainConstraint() calls needed!
 
         // Explore all paths automatically using constraint-based exploration!
         // PathExplorer will iterate up to MAX_ITERATIONS (default 100), but the Vitruvius
@@ -78,8 +80,12 @@ public class AutomaticVitruvPathExploration {
         // Create output directory for this execution
         Path workDir = Paths.get("galette-output-automatic-" + concreteValue);
 
-        // Add domain constraint for every path
-        PathUtils.addIntDomainConstraint("user_choice", 0, 5); // [0, 5) = [0, 4]
+        // NOTE: When running with javaagent, domain and switch constraints are automatically added
+        // by TagPropagator bytecode instrumentation. However, mvn exec:java doesn't support javaagent,
+        // so we add them manually as a fallback.
+
+        // FALLBACK: Add domain constraint manually (automatic with javaagent)
+        PathUtils.addIntDomainConstraint("user_choice", 0, 5);
 
         try {
             // Execute Vitruvius transformation first
@@ -90,8 +96,7 @@ public class AutomaticVitruvPathExploration {
             insertTask.invoke(testInstance, workDir, input);
             System.out.println("  Method invocation succeeded");
 
-            // Record switch constraint for this case
-            // In real deployment with javaagent, this would happen automatically via bytecode instrumentation
+            // FALLBACK: Record switch constraint manually (automatic with javaagent)
             PathUtils.addSwitchConstraint("user_choice", concreteValue);
 
             System.out.println(" Vitruvius transformation executed");

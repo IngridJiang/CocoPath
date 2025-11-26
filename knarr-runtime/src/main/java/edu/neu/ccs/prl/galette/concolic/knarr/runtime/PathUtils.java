@@ -287,6 +287,47 @@ public class PathUtils {
     }
 
     /**
+     * Automatically add a domain constraint for an integer variable using its symbolic tag.
+     * This is called by bytecode instrumentation when a switch statement is encountered.
+     * The domain is extracted from the switch statement's min/max values.
+     *
+     * @param tag The symbolic tag associated with the switch index variable
+     * @param min Minimum value (inclusive) from switch statement
+     * @param max Maximum value (exclusive) - computed as switch max + 1
+     */
+    public static void addIntDomainConstraintAuto(Tag tag, int min, int max) {
+        if (tag == null) {
+            return; // No symbolic tag, skip constraint collection
+        }
+
+        try {
+            Expression expr = GaletteGreenBridge.tagToGreenExpression(tag, 0);
+            if (expr == null) {
+                return;
+            }
+
+            IntConstant minConst = new IntConstant(min);
+            IntConstant maxConst = new IntConstant(max);
+
+            // min <= expr
+            Expression lowerBound = new BinaryOperation(Operator.LE, minConst, expr);
+            // expr < max
+            Expression upperBound = new BinaryOperation(Operator.LT, expr, maxConst);
+            // min <= expr AND expr < max
+            Expression domain = new BinaryOperation(Operator.AND, lowerBound, upperBound);
+
+            getCurPC().addConstraint(domain);
+
+            if (GaletteSymbolicator.DEBUG) {
+                System.out.println(
+                        "[PathUtils] Auto-added domain constraint from switch: " + min + " <= " + expr + " < " + max);
+            }
+        } catch (Exception e) {
+            System.err.println("[PathUtils] Failed to auto-add domain constraint: " + e.getMessage());
+        }
+    }
+
+    /**
      * Add a switch/case constraint for current path.
      * This records that the variable equals the specific value taken in this execution.
      *
