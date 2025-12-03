@@ -631,13 +631,8 @@ class TagPropagator extends MethodVisitor {
     @Override
     public void visitTableSwitchInsn(int min, int max, Label dflt, Label... labels) {
         // ..., index -> ...
-        // Record switch constraints if symbolic execution is enabled
-        if (isSymbolicExecutionEnabled()) {
-            recordSwitchConstraint(min, max, dflt, labels, true);
-            // recordSwitchConstraint handles the switch instruction itself
-            shadowLocals.pop(1);
-            return; // Early return - don't execute super.visitTableSwitchInsn
-        }
+        // Note: Switch constraint collection is handled manually via PathUtils API
+        // See AutomaticVitruvPathExploration.executeVitruvWithInput() for manual collection
         shadowLocals.pop(1);
         super.visitTableSwitchInsn(min, max, dflt, labels);
     }
@@ -645,13 +640,7 @@ class TagPropagator extends MethodVisitor {
     @Override
     public void visitLookupSwitchInsn(Label dflt, int[] keys, Label[] labels) {
         // ..., key -> ...
-        // Record switch constraints if symbolic execution is enabled
-        if (isSymbolicExecutionEnabled()) {
-            recordLookupSwitchConstraint(keys, dflt, labels);
-            // recordLookupSwitchConstraint handles the switch instruction itself
-            shadowLocals.pop(1);
-            return; // Early return - don't execute super.visitLookupSwitchInsn
-        }
+        // Note: Switch constraint collection is handled manually via PathUtils API
         shadowLocals.pop(1);
         super.visitLookupSwitchInsn(dflt, keys, labels);
     }
@@ -875,164 +864,9 @@ class TagPropagator extends MethodVisitor {
         // Note: The value will be popped by the normal visitJumpInsn flow
     }
 
-    /**
-     * Record switch constraint for table switch instructions.
-     *
-     * Pattern (based on Phosphor's lookupSwitch implementation):
-     * 1. Duplicate the switch index value
-     * 2. Create fresh intermediate labels for each case
-     * 3. Execute switch with fresh labels
-     * 4. At each fresh label: record constraint, then jump to original label
-     * 5. AUTOMATICALLY add domain constraint based on switch min/max values
-     */
-    private void recordSwitchConstraint(int min, int max, Label dflt, Label[] labels, boolean isTableSwitch) {
-        // Generate fresh intermediate labels
-        Label[] freshLabels = new Label[labels.length];
-        for (int i = 0; i < freshLabels.length; i++) {
-            freshLabels[i] = new Label();
-        }
-        Label freshDefault = new Label();
-
-        // Stack at this point: ..., index
-        // Shadow stack: ..., tag
-
-        // === AUTOMATIC DOMAIN CONSTRAINT EXTRACTION ===
-        // Add domain constraint based on switch statement structure
-        // Domain is [min, max+1) which covers all case values
-        shadowLocals.peek(0); // Get the tag from shadow stack
-        AsmUtil.pushInt(mv, min); // Push min value
-        AsmUtil.pushInt(mv, max + 1); // Push max+1 value (exclusive upper bound)
-        super.visitMethodInsn(
-                INVOKESTATIC, PATH_UTILS_INTERNAL_NAME, "addIntDomainConstraintAuto", "(" + TAG_DESC + "II)V", false);
-        // This automatically adds the constraint: min <= var < max+1
-
-        // Duplicate the switch index value for constraint recording
-        super.visitInsn(DUP);
-        // Stack: ..., index, index
-
-        // Execute table switch with fresh labels
-        super.visitTableSwitchInsn(min, max, freshDefault, freshLabels);
-
-        // For each case, record the constraint before jumping to original label
-        for (int i = 0; i < freshLabels.length; i++) {
-            super.visitLabel(freshLabels[i]);
-            // Stack: ..., index (duplicated value)
-
-            // Peek at the tag from shadow stack
-            shadowLocals.peek(0);
-            // Stack: ..., index, tag
-
-            // Load the case value (min + i)
-            AsmUtil.pushInt(mv, min + i);
-            // Stack: ..., index, tag, caseValue
-
-            // Call PathUtils.recordSwitchConstraintAuto(tag, caseValue)
-            super.visitMethodInsn(
-                    INVOKESTATIC,
-                    PATH_UTILS_INTERNAL_NAME,
-                    "recordSwitchConstraintAuto",
-                    "(" + TAG_DESC + "I)V",
-                    false);
-            // Stack: ..., index
-
-            // Jump to the original user label
-            super.visitJumpInsn(GOTO, labels[i]);
-        }
-
-        // Default case
-        super.visitLabel(freshDefault);
-        // Stack: ..., index
-
-        // For default case, we use -1 to indicate "default"
-        shadowLocals.peek(0);
-        AsmUtil.pushInt(mv, -1);
-        super.visitMethodInsn(
-                INVOKESTATIC, PATH_UTILS_INTERNAL_NAME, "recordSwitchConstraintAuto", "(" + TAG_DESC + "I)V", false);
-
-        // Jump to the original default label
-        super.visitJumpInsn(GOTO, dflt);
-    }
-
-    /**
-     * Record switch constraint for lookup switch instructions.
-     *
-     * Similar to recordSwitchConstraint but uses the actual key values from the keys array.
-     * AUTOMATICALLY extracts domain constraint from the min/max key values.
-     */
-    private void recordLookupSwitchConstraint(int[] keys, Label dflt, Label[] labels) {
-        // Generate fresh intermediate labels
-        Label[] freshLabels = new Label[labels.length];
-        for (int i = 0; i < freshLabels.length; i++) {
-            freshLabels[i] = new Label();
-        }
-        Label freshDefault = new Label();
-
-        // Stack at this point: ..., key
-        // Shadow stack: ..., tag
-
-        // === AUTOMATIC DOMAIN CONSTRAINT EXTRACTION ===
-        // Find min and max key values
-        int minKey = keys[0];
-        int maxKey = keys[0];
-        for (int key : keys) {
-            if (key < minKey) minKey = key;
-            if (key > maxKey) maxKey = key;
-        }
-
-        // Add domain constraint based on lookup switch key range
-        shadowLocals.peek(0); // Get the tag from shadow stack
-        AsmUtil.pushInt(mv, minKey); // Push min key value
-        AsmUtil.pushInt(mv, maxKey + 1); // Push maxKey+1 value (exclusive upper bound)
-        super.visitMethodInsn(
-                INVOKESTATIC, PATH_UTILS_INTERNAL_NAME, "addIntDomainConstraintAuto", "(" + TAG_DESC + "II)V", false);
-        // This automatically adds the constraint: minKey <= var < maxKey+1
-
-        // Duplicate the switch key value for constraint recording
-        super.visitInsn(DUP);
-        // Stack: ..., key, key
-
-        // Execute lookup switch with fresh labels
-        super.visitLookupSwitchInsn(freshDefault, keys, freshLabels);
-
-        // For each case, record the constraint before jumping to original label
-        for (int i = 0; i < freshLabels.length; i++) {
-            super.visitLabel(freshLabels[i]);
-            // Stack: ..., key (duplicated value)
-
-            // Peek at the tag from shadow stack
-            shadowLocals.peek(0);
-            // Stack: ..., key, tag
-
-            // Load the actual key value for this case
-            AsmUtil.pushInt(mv, keys[i]);
-            // Stack: ..., key, tag, keyValue
-
-            // Call PathUtils.recordSwitchConstraintAuto(tag, keyValue)
-            super.visitMethodInsn(
-                    INVOKESTATIC,
-                    PATH_UTILS_INTERNAL_NAME,
-                    "recordSwitchConstraintAuto",
-                    "(" + TAG_DESC + "I)V",
-                    false);
-            // Stack: ..., key
-
-            // Jump to the original user label
-            super.visitJumpInsn(GOTO, labels[i]);
-        }
-
-        // Default case
-        super.visitLabel(freshDefault);
-        // Stack: ..., key
-
-        // For default case, we use -1 to indicate "default"
-        shadowLocals.peek(0);
-        AsmUtil.pushInt(mv, -1);
-        super.visitMethodInsn(
-                INVOKESTATIC, PATH_UTILS_INTERNAL_NAME, "recordSwitchConstraintAuto", "(" + TAG_DESC + "I)V", false);
-
-        // Jump to the original default label
-        super.visitJumpInsn(GOTO, dflt);
-    }
+    // Note: Automatic switch constraint collection methods removed.
+    // Switch constraints are now collected manually via PathUtils API.
+    // See AutomaticVitruvPathExploration.executeVitruvWithInput() for implementation.
 
     static MethodVisitor newInstance(MethodVisitor mv, MethodNode original, boolean isShadow, String owner) {
         ShadowLocals shadowLocals = ShadowLocals.newInstance(mv, original, isShadow);

@@ -105,7 +105,17 @@
       "Bash(fuser:*)",
       "Bash(timeout 90 bash:*)",
       "Bash(test:*)",
-      "Bash(timeout 90 mvn clean compile:*)"
+      "Bash(timeout 90 mvn clean compile:*)",
+      "Bash(Select-String -Pattern \"(BUILD SUCCESS|BUILD FAILURE|ERROR|Symbolic|Path|constraint|VSUM|complete|Total paths|Expected paths)\" -Context 0,2)",
+      "Bash(javac:*)",
+      "Bash(timeout 90 mvn compile:*)",
+      "Bash(timeout 90 mvn clean install:*)",
+      "Bash(Select-String -Pattern \"(ERROR|FAILURE|BUILD SUCCESS|BUILD FAILURE|Symbolic|Path|constraint|VSUM|complete|Total paths|Expected paths)\" -Context 0,2)",
+      "Bash(timeout 180 mvn install:*)",
+      "Bash(Select-String -Pattern \"\\.xmi$|galette-test-output\")",
+      "Bash(do if [ -f \"$dir/galette-test-output/vsum-output.xmi\" ])",
+      "Bash(then basename \"$dir\")",
+      "Bash(fi)"
     ],
     "deny": []
   }

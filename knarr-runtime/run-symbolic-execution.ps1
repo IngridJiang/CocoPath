@@ -10,17 +10,35 @@
 #
 # Usage:
 #   .\run-symbolic-execution.ps1                    # Interactive mode (prompts for choice)
-#   .\run-symbolic-execution.ps1 -Internal          # Fast mode (2-5ms/path, simplified)
-#   .\run-symbolic-execution.ps1 -UseExternal       # Full mode (26-45ms/path, complete Vitruvius)
+#   .\run-symbolic-execution.ps1 -Internal          # Single-variable mode (5 paths, simplified)
+#   .\run-symbolic-execution.ps1 -UseExternal       # Single-variable mode (5 paths, full Vitruvius)
+#   .\run-symbolic-execution.ps1 -MultiVar          # Multi-variable mode (25 paths, full Vitruvius)
+#
+# Or specify custom path:
+#   .\run-symbolic-execution.ps1 -UseExternal -ExternalPath "D:\Projects\Amalthea-acset"
+#
+# ============================================================================
+# CONFIGURATION - Modify the default path below for your PC
+# ============================================================================
+# If using EXTERNAL or MULTIVAR mode, update the default ExternalPath parameter
+# to point to your Amalthea-acset repository location.
+#
+# Example:
+#   [string]$ExternalPath = "C:\Users\YourUsername\Amalthea-acset"
+#   [string]$ExternalPath = "D:\Projects\Amalthea-acset"
+#
+# The path should point to the root directory where you cloned:
+#   https://github.com/IngridJiang/Amalthea-acset
 # ============================================================================
 
 param(
     [switch]$UseExternal = $false,
     [switch]$Internal = $false,
-    [string]$ExternalPath = "C:\Users\10239\Amathea-acset"
+    [switch]$MultiVar = $false,
+    [string]$ExternalPath = "C:\Users\10239\Amathea-acset"  # <-- MODIFY THIS for your PC
 )
 
-$INTERACTIVE_MODE = (-not $UseExternal) -and (-not $Internal)
+$INTERACTIVE_MODE = (-not $UseExternal) -and (-not $Internal) -and (-not $MultiVar)
 
 Write-Host "================================================================================" -ForegroundColor Cyan
 Write-Host "CocoPath" -ForegroundColor Cyan
@@ -31,29 +49,44 @@ Write-Host ""
 if ($INTERACTIVE_MODE) {
     Write-Host "Please select execution mode:" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "  1) INTERNAL MODE (Fast, simplified stub)" -ForegroundColor Green
+    Write-Host "  1) INTERNAL MODE (Fast, simplified stub - single variable)" -ForegroundColor Green
     Write-Host "     - Output: Basic XMI stubs" -ForegroundColor Gray
+    Write-Host "     - Explores: 5 paths (one user choice)" -ForegroundColor Gray
     Write-Host "     - No external repository needed" -ForegroundColor Gray
     Write-Host ""
-    Write-Host "  2) EXTERNAL MODE (Full Vitruvius transformations)" -ForegroundColor Yellow
+    Write-Host "  2) EXTERNAL MODE (Full Vitruvius transformations - single variable)" -ForegroundColor Yellow
     Write-Host "     - Output: Complete Vitruvius reactions & transformations" -ForegroundColor Gray
+    Write-Host "     - Explores: 5 paths (one user choice)" -ForegroundColor Gray
     Write-Host "     - Requires external Amalthea-acset repository" -ForegroundColor Gray
     Write-Host ""
-    $choice = Read-Host "Enter your choice (1 or 2)"
+    Write-Host "  3) MULTI-VARIABLE MODE (Full Vitruvius - TWO user choices)" -ForegroundColor Magenta
+    Write-Host "     - Output: Complete Vitruvius reactions & transformations" -ForegroundColor Gray
+    Write-Host "     - Explores: 25 paths (5 × 5 combinations)" -ForegroundColor Gray
+    Write-Host "     - Requires external Amalthea-acset repository" -ForegroundColor Gray
+    Write-Host ""
+    $choice = Read-Host "Enter your choice (1, 2, or 3)"
     Write-Host ""
 
     switch ($choice) {
         "1" {
             $UseExternal = $false
-            Write-Host "Selected: INTERNAL MODE" -ForegroundColor Green
+            $MultiVar = $false
+            Write-Host "Selected: INTERNAL MODE (single variable)" -ForegroundColor Green
         }
         "2" {
             $UseExternal = $true
-            Write-Host "Selected: EXTERNAL MODE" -ForegroundColor Yellow
+            $MultiVar = $false
+            Write-Host "Selected: EXTERNAL MODE (single variable)" -ForegroundColor Yellow
+        }
+        "3" {
+            $UseExternal = $true
+            $MultiVar = $true
+            Write-Host "Selected: MULTI-VARIABLE MODE (two variables, 25 paths)" -ForegroundColor Magenta
         }
         default {
             Write-Host "Invalid choice. Defaulting to INTERNAL MODE." -ForegroundColor Yellow
             $UseExternal = $false
+            $MultiVar = $false
         }
     }
     Write-Host ""
@@ -90,13 +123,24 @@ if ($UseExternal) {
     Write-Host ""
 
     Write-Host "[2/4] Temporarily switching to external dependency..." -ForegroundColor Yellow
-    $pomPath = Join-Path $scriptDir "pom.xml"
-    $pomContent = Get-Content $pomPath -Raw
+    # Use Python script to safely switch dependencies
+    $pythonCmd = $null
+    if (Get-Command python.exe -ErrorAction SilentlyContinue) {
+        $pythonCmd = "python.exe"
+    } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
+        $pythonCmd = "python3"
+    } elseif (Get-Command python -ErrorAction SilentlyContinue) {
+        $pythonCmd = "python"
+    } else {
+        Write-Host "ERROR: Python not found. Cannot switch dependencies." -ForegroundColor Red
+        exit 1
+    }
 
-    # Swap: comment out internal, uncomment external
-    $pomContent = $pomContent -replace '(<dependency>\s*<groupId>edu\.neu\.ccs\.prl\.galette</groupId>\s*<artifactId>amalthea-acset-vsum</artifactId>.*?</dependency>)', '<!-- $1 -->'
-    $pomContent = $pomContent -replace '<!--\s*(<dependency>\s*<groupId>tools\.vitruv</groupId>\s*<artifactId>tools\.vitruv\.methodologisttemplate\.vsum</artifactId>.*?</dependency>)\s*-->', '$1'
-    Set-Content $pomPath $pomContent
+    & $pythonCmd switch-dependency.py external pom.xml
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to switch to external dependency" -ForegroundColor Red
+        exit 1
+    }
     Write-Host "      Switched to external dependency." -ForegroundColor Green
     Write-Host ""
 
@@ -130,7 +174,29 @@ if ($UseExternal) {
         }
     }
 
-    Write-Host "[1/3] Building internal amalthea-acset-integration..." -ForegroundColor Yellow
+    Write-Host "[1/4] Switching to internal dependency..." -ForegroundColor Yellow
+    # Use Python script to safely switch dependencies
+    $pythonCmd = $null
+    if (Get-Command python.exe -ErrorAction SilentlyContinue) {
+        $pythonCmd = "python.exe"
+    } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
+        $pythonCmd = "python3"
+    } elseif (Get-Command python -ErrorAction SilentlyContinue) {
+        $pythonCmd = "python"
+    } else {
+        Write-Host "ERROR: Python not found. Cannot switch dependencies." -ForegroundColor Red
+        exit 1
+    }
+
+    & $pythonCmd switch-dependency.py internal pom.xml
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to switch to internal dependency" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "      Switched to internal dependency." -ForegroundColor Green
+    Write-Host ""
+
+    Write-Host "[2/4] Building internal amalthea-acset-integration..." -ForegroundColor Yellow
     Push-Location (Join-Path (Split-Path $scriptDir -Parent) "amalthea-acset-integration")
     mvn clean install -DskipTests -Dcheckstyle.skip=true
     if ($LASTEXITCODE -ne 0) {
@@ -142,32 +208,38 @@ if ($UseExternal) {
     Write-Host "      Done." -ForegroundColor Green
     Write-Host ""
 
-    $stepOffset = 0
+    $stepOffset = 2
 }
 
-$step1 = 2 + $stepOffset
-$step2 = 3 + $stepOffset
-$totalSteps = 3 + $stepOffset
+$step1 = 3 + $stepOffset
+$step2 = 4 + $stepOffset
+$totalSteps = 4 + $stepOffset
 
 Write-Host "[$step1/$totalSteps] Cleaning previous outputs..." -ForegroundColor Yellow
-if (Test-Path "galette-output-*") {
-    Remove-Item -Recurse -Force "galette-output-*"
-}
-if (Test-Path "execution_paths.json") {
-    Remove-Item "execution_paths.json"
-}
+Get-ChildItem -Path "galette-output-*" -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+Remove-Item "execution_paths_automatic.json" -ErrorAction SilentlyContinue
+Remove-Item "execution_paths_multivar.json" -ErrorAction SilentlyContinue
 Write-Host "      Done." -ForegroundColor Green
 Write-Host ""
 
 Write-Host "[$step2/$totalSteps] Running symbolic execution..." -ForegroundColor Yellow
-Write-Host "      With automatic constraint collection enabled" -ForegroundColor Gray
+Write-Host "      With manual constraint collection via PathUtils API" -ForegroundColor Gray
+
+# Determine which main class to use
+if ($MultiVar) {
+    $mainClass = "edu.neu.ccs.prl.galette.vitruvius.AutomaticVitruvMultiVarPathExploration"
+    Write-Host "      Main class: AutomaticVitruvMultiVarPathExploration (multi-variable)" -ForegroundColor Gray
+} else {
+    $mainClass = "edu.neu.ccs.prl.galette.vitruvius.AutomaticVitruvPathExploration"
+    Write-Host "      Main class: AutomaticVitruvPathExploration (single-variable)" -ForegroundColor Gray
+}
 
 # Note: Javaagent is not compatible with mvn exec:java
 # We use manual constraint collection via PathUtils.addIntDomainConstraint() and addSwitchConstraint()
 
 $mvnSuccess = $true
 try {
-    mvn exec:java "-Dcheckstyle.skip=true"
+    mvn exec:java "-Dexec.mainClass=$mainClass" "-Dcheckstyle.skip=true"
     if ($LASTEXITCODE -ne 0) {
         $mvnSuccess = $false
         Write-Host ""
@@ -179,25 +251,30 @@ try {
     Write-Host "WARNING: Maven execution failed" -ForegroundColor Yellow
 }
 
-# Restore internal dependency if we switched to external
-if ($UseExternal) {
+# Restore pom.xml from backup
+if (Test-Path "pom.xml.bak") {
     Write-Host ""
-    Write-Host "Restoring internal dependency configuration..." -ForegroundColor Yellow
-    $pomPath = Join-Path $scriptDir "pom.xml"
-    $pomContent = Get-Content $pomPath -Raw
-
-    # Restore: uncomment internal, comment out external
-    $pomContent = $pomContent -replace '<!-- (<dependency>\s*<groupId>edu\.neu\.ccs\.prl\.galette</groupId>\s*<artifactId>amalthea-acset-vsum</artifactId>.*?</dependency>) -->', '$1'
-    $pomContent = $pomContent -replace '(<dependency>\s*<groupId>tools\.vitruv</groupId>\s*<artifactId>tools\.vitruv\.methodologisttemplate\.vsum</artifactId>.*?</dependency>)', '<!-- $1 -->'
-    Set-Content $pomPath $pomContent
+    Write-Host "Restoring pom.xml from backup..." -ForegroundColor Yellow
+    Copy-Item "pom.xml.bak" "pom.xml" -Force
+    Remove-Item "pom.xml.bak" -ErrorAction SilentlyContinue
     Write-Host "      Done." -ForegroundColor Green
 }
 
-if (-not (Test-Path "execution_paths_automatic.json")) {
-    if (-not $mvnSuccess) {
-        Write-Host ""
-        Write-Host "ERROR: Symbolic execution failed!" -ForegroundColor Red
-        exit 1
+if ($MultiVar) {
+    if (-not (Test-Path "execution_paths_multivar.json")) {
+        if (-not $mvnSuccess) {
+            Write-Host ""
+            Write-Host "ERROR: Symbolic execution failed!" -ForegroundColor Red
+            exit 1
+        }
+    }
+} else {
+    if (-not (Test-Path "execution_paths_automatic.json")) {
+        if (-not $mvnSuccess) {
+            Write-Host ""
+            Write-Host "ERROR: Symbolic execution failed!" -ForegroundColor Red
+            exit 1
+        }
     }
 }
 
@@ -206,7 +283,18 @@ Write-Host "====================================================================
 Write-Host "Completed." -ForegroundColor Green
 Write-Host "================================================================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "Generated files:" -ForegroundColor Cyan
-Write-Host "  - execution_paths_automatic.json      (Path exploration results)" -ForegroundColor White
-Write-Host "  - galette-output-automatic-*/ (Model outputs per path)" -ForegroundColor White
-Write-Host ""
+if ($MultiVar) {
+    Write-Host "Generated files:" -ForegroundColor Cyan
+    Write-Host "  - execution_paths_multivar.json       (Path exploration results)" -ForegroundColor White
+    Write-Host "  - galette-output-multivar-*/          (Model outputs per path combination)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Multi-variable exploration:" -ForegroundColor Cyan
+    Write-Host "  - Variables: user_choice_1, user_choice_2" -ForegroundColor White
+    Write-Host "  - Expected paths: 5 × 5 = 25" -ForegroundColor White
+    Write-Host ""
+} else {
+    Write-Host "Generated files:" -ForegroundColor Cyan
+    Write-Host "  - execution_paths_automatic.json      (Path exploration results)" -ForegroundColor White
+    Write-Host "  - galette-output-automatic-*/         (Model outputs per path)" -ForegroundColor White
+    Write-Host ""
+}

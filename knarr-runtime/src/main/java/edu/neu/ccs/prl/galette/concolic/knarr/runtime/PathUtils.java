@@ -286,46 +286,8 @@ public class PathUtils {
         }
     }
 
-    /**
-     * Automatically add a domain constraint for an integer variable using its symbolic tag.
-     * This is called by bytecode instrumentation when a switch statement is encountered.
-     * The domain is extracted from the switch statement's min/max values.
-     *
-     * @param tag The symbolic tag associated with the switch index variable
-     * @param min Minimum value (inclusive) from switch statement
-     * @param max Maximum value (exclusive) - computed as switch max + 1
-     */
-    public static void addIntDomainConstraintAuto(Tag tag, int min, int max) {
-        if (tag == null) {
-            return; // No symbolic tag, skip constraint collection
-        }
-
-        try {
-            Expression expr = GaletteGreenBridge.tagToGreenExpression(tag, 0);
-            if (expr == null) {
-                return;
-            }
-
-            IntConstant minConst = new IntConstant(min);
-            IntConstant maxConst = new IntConstant(max);
-
-            // min <= expr
-            Expression lowerBound = new BinaryOperation(Operator.LE, minConst, expr);
-            // expr < max
-            Expression upperBound = new BinaryOperation(Operator.LT, expr, maxConst);
-            // min <= expr AND expr < max
-            Expression domain = new BinaryOperation(Operator.AND, lowerBound, upperBound);
-
-            getCurPC().addConstraint(domain);
-
-            if (GaletteSymbolicator.DEBUG) {
-                System.out.println(
-                        "[PathUtils] Auto-added domain constraint from switch: " + min + " <= " + expr + " < " + max);
-            }
-        } catch (Exception e) {
-            System.err.println("[PathUtils] Failed to auto-add domain constraint: " + e.getMessage());
-        }
-    }
+    // Note: addIntDomainConstraintAuto() removed - automatic switch instrumentation disabled.
+    // Use addIntDomainConstraint(String varName, int min, int max) for manual collection.
 
     /**
      * Add a switch/case constraint for current path.
@@ -392,43 +354,8 @@ public class PathUtils {
         }
     }
 
-    /**
-     * Automatically record a switch constraint when a switch case is selected.
-     * This method is called by bytecode instrumentation at switch statements.
-     *
-     * @param tag The symbolic tag associated with the switch index
-     * @param selectedCase The case value that was selected (-1 for default)
-     */
-    public static void recordSwitchConstraintAuto(Tag tag, int selectedCase) {
-        if (tag == null) {
-            return; // No symbolic tag, skip constraint collection
-        }
-
-        try {
-            Expression expr = GaletteGreenBridge.tagToGreenExpression(tag, 0);
-            if (expr == null) {
-                return;
-            }
-
-            if (selectedCase == -1) {
-                // Default case - need to record that index != all other cases
-                // For now, just skip (requires knowledge of all case values)
-                return;
-            }
-
-            // Create constraint: expr == selectedCase
-            IntConstant caseConst = new IntConstant(selectedCase);
-            Expression constraint = new BinaryOperation(Operator.EQ, expr, caseConst);
-
-            getCurPC().addConstraint(constraint);
-
-            if (GaletteSymbolicator.DEBUG) {
-                System.out.println("[PathUtils] Recorded switch constraint: " + constraint);
-            }
-        } catch (Exception e) {
-            System.err.println("[PathUtils] Failed to record switch constraint: " + e.getMessage());
-        }
-    }
+    // Note: recordSwitchConstraintAuto() removed - automatic switch instrumentation disabled.
+    // Use addSwitchConstraint(String varName, int value) for manual collection.
 
     /**
      * Convert a branch opcode to a Green operator, accounting for whether branch was taken.
