@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>edu.neu.ccs.prl.galette</groupId>
+        <artifactId>galette</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>knarr-runtime</artifactId>
+    <description>
+        Knarr runtime components vendored for Galette integration.
+        Contains runtime classes for dynamic symbolic execution and constraint solving.
+    </description>
+    
+    <dependencies>
+        <!-- Galette agent dependency for taint tracking -->
+        <dependency>
+            <groupId>edu.neu.ccs.prl.galette</groupId>
+            <artifactId>galette-agent</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        
+        <!-- Green constraint solver dependency -->
+        <dependency>
+            <groupId>edu.gmu.swe.greensolver</groupId>
+            <artifactId>green</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        
+        <!-- ASM dependencies for bytecode manipulation -->
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-tree</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-commons</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-util</artifactId>
+        </dependency>
+        
+        <!-- JUnit for testing -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Vitruvius Amalthea-ASCET Integration -->
+        <!-- Option 1: Use internal amalthea-acset-integration module (SIMPLIFIED STUB) -->
+        <!-- This requires external Amalthea-acset to be built once for Vitruvius dependencies -->
+        <dependency>
+            <groupId>edu.neu.ccs.prl.galette</groupId>
+            <artifactId>amalthea-acset-vsum</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Option 2 (CURRENT): Use external Amathea-acset repository (FULL VITRUVIUS) -->
+        <!-- This provides complete Vitruvius reactions and transformations -->
+        <!--        <dependency>
+            <groupId>tools.vitruv</groupId>
+            <artifactId>tools.vitruv.methodologisttemplate.vsum</artifactId>
+            <version>0.1.0-SNAPSHOT</version>
+        </dependency>
+        -->
+
+        <!-- Vitruvius framework dependencies (required for either option) -->
+        <dependency>
+            <groupId>tools.vitruv</groupId>
+            <artifactId>tools.vitruv.change.interaction</artifactId>
+            <version>3.1.2</version>
+        </dependency>
+        <dependency>
+            <groupId>tools.vitruv</groupId>
+            <artifactId>tools.vitruv.change.propagation</artifactId>
+            <version>3.1.2</version>
+        </dependency>
+        <dependency>
+            <groupId>tools.vitruv</groupId>
+            <artifactId>tools.vitruv.framework.vsum</artifactId>
+            <version>3.1.2</version>
+        </dependency>
+
+        <!-- EMF dependencies (required for XMI handling) -->
+        <dependency>
+            <groupId>org.eclipse.emf</groupId>
+            <artifactId>org.eclipse.emf.ecore</artifactId>
+            <version>2.26.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.emf</groupId>
+            <artifactId>org.eclipse.emf.ecore.xmi</artifactId>
+            <version>2.16.0</version>
+        </dependency>
+    </dependencies>
+    
+    <properties>
+        <galette.agentJar>${edu.neu.ccs.prl.galette:galette-agent:jar}</galette.agentJar>
+        <galette.java>${project.build.directory}/galette/java/</galette.java>
+        <galette.cache>${project.build.directory}/galette/cache</galette.cache>
+    </properties>
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <encoding>UTF-8</encoding>
+                    <!-- Note: Some original Knarr classes may have compilation warnings -->
+                    <!-- due to Phosphor dependencies being replaced with Galette -->
+                    <compilerArgs>
+                        <arg>-Xlint:deprecation</arg>
+                        <arg>-Xlint:unchecked</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+            
+            <!-- Galette Maven Plugin for Java Instrumentation -->
+            <plugin>
+                <groupId>edu.neu.ccs.prl.galette</groupId>
+                <artifactId>galette-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <executions>
+                    <execution>
+                        <id>instrument</id>
+                        <goals>
+                            <goal>instrument</goal>
+                        </goals>
+                        <phase>process-resources</phase>
+                        <configuration>
+                            <outputDirectory>${galette.java}</outputDirectory>
+                            <linkedCaches>
+                                <linkedCache>${galette.cache}</linkedCache>
+                            </linkedCaches>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            
+            <!-- Maven Dependency Plugin for Property Resolution -->
+            <plugin>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Exec Maven Plugin for Running Symbolic Execution -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <!-- mainClass removed - now specified via -Dexec.mainClass on command line -->
+                    <cleanupDaemonThreads>false</cleanupDaemonThreads>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

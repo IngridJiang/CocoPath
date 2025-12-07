@@ -10,6 +10,7 @@ USE_EXTERNAL=false
 INTERACTIVE_MODE=true
 EXTERNAL_PATH="/home/anne/CocoPath/Amalthea-acset"
 SKIP_EXTERNAL_BUILD=false
+COPY_ONLY=false
 
 usage() {
   cat <<'EOF'
@@ -20,6 +21,7 @@ Options:
   --external, -e         Use external Amalthea-acset repository
   --external-path PATH   Override path to external Amalthea-acset checkout
   --skip-external-build, -s  Skip building external Amalthea-acset (use if nothing changed)
+  --copy-only, -c        Only copy generated files from external to internal, then exit
   --help, -h             Show this help message
 EOF
 }
@@ -50,6 +52,11 @@ while [[ $# -gt 0 ]]; do
       SKIP_EXTERNAL_BUILD=true
       shift
       ;;
+    --copy-only|-c)
+      COPY_ONLY=true
+      INTERACTIVE_MODE=false
+      shift
+      ;;
     --help|-h)
       usage
       exit 0
@@ -61,6 +68,56 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Handle copy-only mode
+if [[ "$COPY_ONLY" == true ]]; then
+  echo "Copy-only mode: Copying generated files from external to internal project..."
+
+  # Ensure external path exists
+  if [[ ! -d "$EXTERNAL_PATH" ]]; then
+    echo "ERROR: External path does not exist: $EXTERNAL_PATH" >&2
+    exit 1
+  fi
+
+  INTERNAL_PATH="${ROOT_DIR}/amalthea-acset-integration"
+
+  # Check if generated files exist
+  if [[ ! -d "$EXTERNAL_PATH/consistency/target/generated-sources/reactions/mir" ]]; then
+    echo "ERROR: Generated reaction files not found in $EXTERNAL_PATH" >&2
+    echo "       Run 'mvn clean install' in $EXTERNAL_PATH first" >&2
+    exit 1
+  fi
+
+  # Copy the files
+  if [[ -d "$INTERNAL_PATH/consistency/src/main/java/mir" ]]; then
+    echo "Copying reactions..."
+    cp -r "$EXTERNAL_PATH/consistency/target/generated-sources/reactions/mir/reactions" \
+          "$INTERNAL_PATH/consistency/src/main/java/mir/" 2>/dev/null || true
+
+    echo "Copying routines..."
+    cp -r "$EXTERNAL_PATH/consistency/target/generated-sources/reactions/mir/routines" \
+          "$INTERNAL_PATH/consistency/src/main/java/mir/" 2>/dev/null || true
+
+    echo "Files copied successfully!"
+
+    # Show what was copied
+    echo ""
+    echo "Verifying symbolic execution integration in copied files:"
+    if grep -q "symbolicVitruviusChoice" "$INTERNAL_PATH/consistency/src/main/java/mir/routines/amalthea2ascet/CreateAscetTaskRoutine.java" 2>/dev/null; then
+      echo "✓ Symbolic execution calls found in CreateAscetTaskRoutine.java"
+    else
+      echo "✗ WARNING: Symbolic execution calls NOT found in CreateAscetTaskRoutine.java"
+      echo "  The external project may need to be rebuilt with the updated reactions."
+    fi
+  else
+    echo "ERROR: Internal project structure not found at $INTERNAL_PATH" >&2
+    exit 1
+  fi
+
+  echo ""
+  echo "Done! You can now run without --copy-only to execute with the updated files."
+  exit 0
+fi
 
 if [[ "$INTERACTIVE_MODE" == true ]]; then
   echo "Please select execution mode:"
@@ -161,26 +218,6 @@ else
     fi
   fi
 
-  # Copy generated reaction files from external to internal project
-  # This ensures the internal project uses the latest generated code with symbolic execution support
-  if [[ -d "$EXTERNAL_PATH" ]]; then
-    echo "Copying generated reaction files to internal amalthea-acset-integration..."
-    INTERNAL_PATH="${ROOT_DIR}/amalthea-acset-integration"
-    if [[ -d "$INTERNAL_PATH/consistency/src/main/java/mir" ]]; then
-      # Copy reactions and routines from the generated-sources directory
-      if [[ -d "$EXTERNAL_PATH/consistency/target/generated-sources/reactions/mir" ]]; then
-        cp -r "$EXTERNAL_PATH/consistency/target/generated-sources/reactions/mir/reactions" \
-              "$INTERNAL_PATH/consistency/src/main/java/mir/" 2>/dev/null || true
-        cp -r "$EXTERNAL_PATH/consistency/target/generated-sources/reactions/mir/routines" \
-              "$INTERNAL_PATH/consistency/src/main/java/mir/" 2>/dev/null || true
-
-        echo "Reaction files copied successfully."
-      else
-        echo "WARNING: Generated reaction files not found in external Amalthea-acset"
-        echo "         You may need to build the external project first."
-      fi
-    fi
-  fi
 
   "$PYTHON_CMD" "${SCRIPT_DIR}/switch-dependency.py" internal "${SCRIPT_DIR}/pom.xml"
   RESTORE_POM=true

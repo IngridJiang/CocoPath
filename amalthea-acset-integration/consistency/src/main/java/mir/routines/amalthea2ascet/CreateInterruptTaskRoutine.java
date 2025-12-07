@@ -12,10 +12,6 @@ import tools.vitruv.methodologisttemplate.model.model.InterruptTask;
 import tools.vitruv.methodologisttemplate.model.model2.ComponentContainer;
 import tools.vitruv.methodologisttemplate.model.model2.Task;
 
-/**
- * Generated Java Code from Reactions DSL.
- *
- */
 @SuppressWarnings("all")
 public class CreateInterruptTaskRoutine extends AbstractRoutine {
     private CreateInterruptTaskRoutine.InputValues inputValues;

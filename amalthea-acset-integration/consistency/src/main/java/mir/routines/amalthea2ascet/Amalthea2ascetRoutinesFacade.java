@@ -8,10 +8,6 @@ import tools.vitruv.dsls.reactions.runtime.structure.ReactionsImportPath;
 import tools.vitruv.methodologisttemplate.model.model2.ComponentContainer;
 import tools.vitruv.methodologisttemplate.model.model2.Task;
 
-/**
- * Generated Java Code from Reactions DSL.
- *
- */
 @SuppressWarnings("all")
 public class Amalthea2ascetRoutinesFacade extends AbstractRoutinesFacade {
     public Amalthea2ascetRoutinesFacade(

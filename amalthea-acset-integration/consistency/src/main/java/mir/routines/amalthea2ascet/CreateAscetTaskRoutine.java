@@ -1,18 +1,17 @@
 package mir.routines.amalthea2ascet;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import org.eclipse.xtext.xbase.lib.Conversions;
+import org.eclipse.xtext.xbase.lib.Exceptions;
 import org.eclipse.xtext.xbase.lib.Extension;
+import org.eclipse.xtext.xbase.lib.InputOutput;
 import tools.vitruv.dsls.reactions.runtime.routines.AbstractRoutine;
 import tools.vitruv.dsls.reactions.runtime.state.ReactionExecutionState;
 import tools.vitruv.dsls.reactions.runtime.structure.CallHierarchyHaving;
 import tools.vitruv.methodologisttemplate.model.model2.ComponentContainer;
 import tools.vitruv.methodologisttemplate.model.model2.Task;
 
-/**
- * Generated Java Code from Reactions DSL.
- *
- */
 @SuppressWarnings("all")
 public class CreateAscetTaskRoutine extends AbstractRoutine {
     private CreateAscetTaskRoutine.InputValues inputValues;
@@ -37,6 +36,11 @@ public class CreateAscetTaskRoutine extends AbstractRoutine {
                 final Task task,
                 final ComponentContainer container,
                 @Extension final Amalthea2ascetRoutinesFacade _routinesFacade) {
+            InputOutput.<String>println("[Reaction] createAscetTask routine CALLED!");
+            String _name = task.getName();
+            String _plus = ("  - Task: " + _name);
+            InputOutput.<String>println(_plus);
+            InputOutput.<String>println(("  - Container: " + container));
             final String userMsg =
                     "A Task has been created. Please decide whether and which corresponding ASCET Task should be created.";
             final String interruptTaskOption = "Create InterruptTask";
@@ -47,14 +51,66 @@ public class CreateAscetTaskRoutine extends AbstractRoutine {
             final String[] options = {
                 interruptTaskOption, periodicTaskOption, softwareTaskOption, timeTableTaskOption, doNothingOption
             };
+            InputOutput.<String>println("[Reaction] About to call userInteractor.startInteraction()...");
             final Integer selected = this.executionState
                     .getUserInteractor()
                     .getSingleSelectionDialogBuilder()
                     .message(userMsg)
                     .choices(((Iterable<String>) Conversions.doWrapArray(options)))
                     .startInteraction();
-            if (selected != null) {
-                switch (selected) {
+            InputOutput.<String>println(("[Reaction] userInteractor returned: " + selected));
+            Integer _xifexpression = null;
+            if ((selected != null)) {
+                Integer _xtrycatchfinallyexpression = null;
+                try {
+                    Integer _xblockexpression = null;
+                    {
+                        InputOutput.<String>println(
+                                "[Reaction] Attempting to call SymbolicComparison.symbolicVitruviusChoice");
+                        InputOutput.<String>println(("  - selected = " + selected));
+                        final Class<?> symbolicClass =
+                                Class.forName("edu.neu.ccs.prl.galette.concolic.knarr.runtime.SymbolicComparison");
+                        InputOutput.<String>println(("  - Found class: " + symbolicClass));
+                        final Method method = symbolicClass.getMethod(
+                                "symbolicVitruviusChoice", Integer.class, Integer.TYPE, Integer.TYPE);
+                        InputOutput.<String>println(("  - Found method: " + method));
+                        Object _invoke = method.invoke(null, selected, Integer.valueOf(0), Integer.valueOf(4));
+                        final Integer result = ((Integer) _invoke);
+                        InputOutput.<String>println(("  - Method returned: " + result));
+                        _xblockexpression = result;
+                    }
+                    _xtrycatchfinallyexpression = _xblockexpression;
+                } catch (final Throwable _t) {
+                    if (_t instanceof Exception) {
+                        final Exception e = (Exception) _t;
+                        Integer _xblockexpression_1 = null;
+                        {
+                            String _name_1 = e.getClass().getName();
+                            String _plus_1 = ("[Reaction] Failed to call SymbolicComparison: " + _name_1);
+                            String _plus_2 = (_plus_1 + ": ");
+                            String _message = e.getMessage();
+                            String _plus_3 = (_plus_2 + _message);
+                            InputOutput.<String>println(_plus_3);
+                            e.printStackTrace();
+                            _xblockexpression_1 = selected;
+                        }
+                        _xtrycatchfinallyexpression = _xblockexpression_1;
+                    } else {
+                        throw Exceptions.sneakyThrow(_t);
+                    }
+                }
+                _xifexpression = _xtrycatchfinallyexpression;
+            } else {
+                Integer _xblockexpression = null;
+                {
+                    InputOutput.<String>println("[Reaction] Selected is null, not calling SymbolicComparison");
+                    _xblockexpression = selected;
+                }
+                _xifexpression = _xblockexpression;
+            }
+            final Integer symbolicSelected = _xifexpression;
+            if (symbolicSelected != null) {
+                switch (symbolicSelected) {
                     case 0:
                         _routinesFacade.createInterruptTask(task, container);
                         break;
