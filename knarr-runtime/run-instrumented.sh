@@ -74,4 +74,7 @@ set -x
   -Dsymbolic.execution.debug=true \
   -Dgalette.debug=true \
   -Dpath.explorer.max.iterations=30 \
+  -DDEBUG=true \
+  -Dpath.explorer.debug=true \
+  -Dconstraint.solver.debug=true \
   "$MAIN_CLASS" "$@"
