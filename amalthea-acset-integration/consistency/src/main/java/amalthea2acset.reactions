@@ -59,12 +59,16 @@ reaction TaskCreated {
 
 routine createAscetTask(amalthea::Task task, amalthea::ComponentContainer container){
 	update {
+		println("[Reaction] createAscetTask routine CALLED!")
+		println("  - Task: " + task.name)
+		println("  - Container: " + container)
+
 		val String userMsg = "A Task has been created. Please decide whether and which corresponding ASCET Task should be created."
 
         val interruptTaskOption = "Create InterruptTask"
         val periodicTaskOption = "Create PeriodicTask"
         val softwareTaskOption = "Create SoftwareTask"
-        val timeTableTaskOption = "Create TimeTableTask"   
+        val timeTableTaskOption = "Create TimeTableTask"
         val doNothingOption = "Decide Later"
 
         val String[] options = #[
@@ -75,16 +79,43 @@ routine createAscetTask(amalthea::Task task, amalthea::ComponentContainer contai
             doNothingOption
         ]
 
+        println("[Reaction] About to call userInteractor.startInteraction()...")
         val Integer selected = userInteractor
         .singleSelectionDialogBuilder
         .message(userMsg)
         .choices(options)
         .startInteraction()
+        println("[Reaction] userInteractor returned: " + selected)
 
-    
-        switch (selected) {
+        // Record symbolic constraint for the user's choice
+        // This enables automatic path exploration through all dialog options
+        val Integer symbolicSelected = if (selected !== null) {
+            // Use reflection to call SymbolicComparison.symbolicVitruviusChoice
+            // This avoids direct dependency on Galette classes in the reactions
+            try {
+                println("[Reaction] Attempting to call SymbolicComparison.symbolicVitruviusChoice")
+                println("  - selected = " + selected)
+                val symbolicClass = Class.forName("edu.neu.ccs.prl.galette.concolic.knarr.runtime.SymbolicComparison")
+                println("  - Found class: " + symbolicClass)
+                val method = symbolicClass.getMethod("symbolicVitruviusChoice", Integer, Integer.TYPE, Integer.TYPE)
+                println("  - Found method: " + method)
+                val result = method.invoke(null, selected, 0, 4) as Integer
+                println("  - Method returned: " + result)
+                result
+            } catch (Exception e) {
+                // If symbolic execution is not available, use the original value
+                println("[Reaction] Failed to call SymbolicComparison: " + e.class.name + ": " + e.message)
+                e.printStackTrace()
+                selected
+            }
+        } else {
+            println("[Reaction] Selected is null, not calling SymbolicComparison")
+            selected
+        }
+
+        switch (symbolicSelected) {
             case 0: {
-                createInterruptTask(task,container)               
+                createInterruptTask(task,container)
             }
             case 1: {
                 createPeriodicTask(task,container)
@@ -99,7 +130,7 @@ routine createAscetTask(amalthea::Task task, amalthea::ComponentContainer contai
                 // no action
             }
         }
-		
+
 	}
 }
 

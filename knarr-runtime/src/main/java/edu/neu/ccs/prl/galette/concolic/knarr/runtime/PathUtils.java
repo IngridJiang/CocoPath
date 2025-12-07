@@ -315,6 +315,110 @@ public class PathUtils {
     }
 
     /**
+     * Add a switch constraint using a Tag (similar to old Knarr-Phosphor version).
+     * This extracts the symbolic expression from the tag and records the constraint.
+     *
+     * @param tag The symbolic tag associated with the switched value
+     * @param concreteValue The concrete value taken in this execution
+     */
+    public static void addSwitchConstraint(Tag tag, int concreteValue) {
+        if (tag == null || tag.isEmpty()) {
+            // Fallback to string-based constraint with default name
+            addSwitchConstraint("switch_value", concreteValue);
+            return;
+        }
+
+        try {
+            // Extract symbolic expression from tag
+            Expression varExpr = GaletteGreenBridge.tagToExpression(tag);
+            if (varExpr == null) {
+                // Create a new symbolic variable based on tag
+                String varName = "tagged_var_" + tag.toString().hashCode();
+                varExpr = new IntVariable(varName, Integer.MIN_VALUE, Integer.MAX_VALUE);
+            }
+
+            // Create constraint: varExpr == concreteValue
+            IntConstant valueConst = new IntConstant(concreteValue);
+            Expression constraint = new BinaryOperation(Operator.EQ, varExpr, valueConst);
+
+            getCurPC().addConstraint(constraint);
+
+            if (GaletteSymbolicator.DEBUG) {
+                System.out.println("[PathUtils] Added tagged switch constraint: " + varExpr + " == " + concreteValue);
+            }
+        } catch (Exception e) {
+            System.err.println("[PathUtils] Failed to add tagged switch constraint: " + e.getMessage());
+            // Fallback to string-based
+            addSwitchConstraint("switch_value", concreteValue);
+        }
+    }
+
+    /**
+     * Add a switch constraint with all possible case values (similar to old Knarr-Phosphor).
+     * This method records the taken value and can optionally record NOT constraints for other cases.
+     *
+     * @param tag The symbolic tag
+     * @param concreteValue The value that was taken
+     * @param allCases All possible case values in the switch
+     */
+    public static void addSwitchConstraint(Tag tag, int concreteValue, int[] allCases) {
+        if (tag == null || tag.isEmpty()) {
+            // Fallback to simple constraint
+            addSwitchConstraint("switch_value", concreteValue);
+            return;
+        }
+
+        try {
+            Expression varExpr = GaletteGreenBridge.tagToExpression(tag);
+            if (varExpr == null) {
+                String varName = "tagged_switch_" + tag.toString().hashCode();
+                varExpr = new IntVariable(varName, Integer.MIN_VALUE, Integer.MAX_VALUE);
+            }
+
+            // Add domain constraint based on all cases
+            if (allCases != null && allCases.length > 0) {
+                int minCase = allCases[0];
+                int maxCase = allCases[0];
+                for (int c : allCases) {
+                    minCase = Math.min(minCase, c);
+                    maxCase = Math.max(maxCase, c);
+                }
+
+                // Domain constraint: min <= var <= max
+                Expression lowerBound = new BinaryOperation(Operator.GE, varExpr, new IntConstant(minCase));
+                Expression upperBound = new BinaryOperation(Operator.LE, varExpr, new IntConstant(maxCase));
+                Expression domainConstraint = new BinaryOperation(Operator.AND, lowerBound, upperBound);
+                getCurPC().addConstraint(domainConstraint);
+            }
+
+            // Add the equality constraint for the taken value
+            Expression takenConstraint = new BinaryOperation(Operator.EQ, varExpr, new IntConstant(concreteValue));
+            getCurPC().addConstraint(takenConstraint);
+
+            // Optionally add NOT constraints for other cases (for better constraint propagation)
+            if (allCases != null) {
+                for (int caseValue : allCases) {
+                    if (caseValue != concreteValue) {
+                        // This branch was NOT taken
+                        Expression notTakenConstraint =
+                                new BinaryOperation(Operator.NE, varExpr, new IntConstant(caseValue));
+                        // Note: We might not want to add all NOT constraints as it could overconstrain
+                        // Only add if specifically needed for the solver
+                    }
+                }
+            }
+
+            if (GaletteSymbolicator.DEBUG) {
+                System.out.println("[PathUtils] Added switch constraint with cases: " + varExpr + " == " + concreteValue
+                        + " (cases: " + java.util.Arrays.toString(allCases) + ")");
+            }
+        } catch (Exception e) {
+            System.err.println("[PathUtils] Failed to add switch constraint with cases: " + e.getMessage());
+            addSwitchConstraint("switch_value", concreteValue);
+        }
+    }
+
+    /**
      * Automatically record a branch constraint when a conditional jump is taken/not taken.
      * This method is called by bytecode instrumentation at branch points.
      *

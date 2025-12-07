@@ -182,4 +182,173 @@ public class SymbolicComparison {
             System.err.println("Error adding boolean constraint: " + e.getMessage());
         }
     }
+
+    /**
+     * Handle a symbolic switch statement and record the constraint for the taken path.
+     * This method is designed to be called from Vitruvius reactions or any switch-like decision point.
+     *
+     * @param value The concrete value being switched on
+     * @param tag The symbolic tag associated with the value (can be null for concrete values)
+     * @param cases All possible case values in the switch
+     * @return The original value (for transparent integration)
+     */
+    public static int symbolicSwitch(int value, Tag tag, int... cases) {
+        try {
+            System.out.println(
+                    "symbolicSwitch called with value: " + value + ", cases: " + java.util.Arrays.toString(cases));
+            // If we have a symbolic tag, record the constraint
+            if (tag != null && !tag.isEmpty()) {
+                // Get or create symbolic expression for the tag
+                Expression varExpr = GaletteGreenBridge.tagToExpression(tag);
+                if (varExpr == null) {
+                    // Create a new symbolic variable if needed
+                    String varName = "switch_var_" + tag.toString().hashCode();
+                    varExpr = new IntVariable(varName, Integer.MIN_VALUE, Integer.MAX_VALUE);
+                }
+
+                // Add domain constraint based on the cases
+                if (cases.length > 0) {
+                    int minCase = cases[0];
+                    int maxCase = cases[0];
+                    for (int c : cases) {
+                        minCase = Math.min(minCase, c);
+                        maxCase = Math.max(maxCase, c);
+                    }
+
+                    // Add domain constraint: min <= var <= max
+                    Expression lowerBound = new BinaryOperation(Operator.GE, varExpr, new IntConstant(minCase));
+                    Expression upperBound = new BinaryOperation(Operator.LE, varExpr, new IntConstant(maxCase));
+                    Expression domainConstraint = new BinaryOperation(Operator.AND, lowerBound, upperBound);
+
+                    PathConditionWrapper pc = PathUtils.getCurPC();
+                    pc.addConstraint(domainConstraint);
+                }
+
+                // Add the equality constraint for the taken path
+                Expression takenConstraint = new BinaryOperation(Operator.EQ, varExpr, new IntConstant(value));
+                PathConditionWrapper pc = PathUtils.getCurPC();
+                pc.addConstraint(takenConstraint);
+
+                if (GaletteSymbolicator.DEBUG) {
+                    System.out.println(
+                            "Symbolic switch: value=" + value + ", cases=" + java.util.Arrays.toString(cases));
+                    System.out.println("Added constraint: " + varExpr + " == " + value);
+                }
+            } else {
+                // No tag, but still record as a concrete constraint using variable name inference
+                String varName = "user_choice"; // Default variable name
+                PathUtils.addSwitchConstraint(varName, value);
+
+                if (GaletteSymbolicator.DEBUG) {
+                    System.out.println("Concrete switch (no tag): value=" + value);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error in symbolicSwitch: " + e.getMessage());
+            if (GaletteSymbolicator.DEBUG) {
+                e.printStackTrace();
+            }
+        }
+
+        return value;
+    }
+
+    /**
+     * Handle a symbolic choice (e.g., from user interaction dialog) and record constraints.
+     * This is specifically designed for Vitruvius user interaction scenarios.
+     *
+     * @param value The chosen value
+     * @param tag The symbolic tag (can be null)
+     * @param min Minimum valid choice (inclusive)
+     * @param max Maximum valid choice (inclusive)
+     * @return The original value (for transparent integration)
+     */
+    public static int symbolicChoice(int value, Tag tag, int min, int max) {
+        try {
+            System.out.println("symbolicChoice called with value: " + value + ", range: [" + min + "," + max + "]");
+            if (tag != null && !tag.isEmpty()) {
+                // Tagged symbolic value
+                Expression varExpr = GaletteGreenBridge.tagToExpression(tag);
+                if (varExpr == null) {
+                    String varName = "choice_var_" + tag.toString().hashCode();
+                    varExpr = new IntVariable(varName, min, max);
+                }
+
+                // Add domain constraint: min <= var <= max
+                Expression lowerBound = new BinaryOperation(Operator.GE, varExpr, new IntConstant(min));
+                Expression upperBound = new BinaryOperation(Operator.LE, varExpr, new IntConstant(max));
+                Expression domainConstraint = new BinaryOperation(Operator.AND, lowerBound, upperBound);
+
+                // Add chosen value constraint: var == value
+                Expression choiceConstraint = new BinaryOperation(Operator.EQ, varExpr, new IntConstant(value));
+
+                PathConditionWrapper pc = PathUtils.getCurPC();
+                pc.addConstraint(domainConstraint);
+                pc.addConstraint(choiceConstraint);
+
+                if (GaletteSymbolicator.DEBUG) {
+                    System.out.println("Symbolic choice: value=" + value + ", range=[" + min + "," + max + "]");
+                }
+            } else {
+                // Fallback to string-based constraint recording
+                String varName = "user_choice";
+                PathUtils.addIntDomainConstraint(
+                        varName, min, max + 1); // max+1 because our method uses exclusive upper bound
+                PathUtils.addSwitchConstraint(varName, value);
+
+                if (GaletteSymbolicator.DEBUG) {
+                    System.out.println(
+                            "Concrete choice (no tag): value=" + value + ", range=[" + min + "," + max + "]");
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error in symbolicChoice: " + e.getMessage());
+            if (GaletteSymbolicator.DEBUG) {
+                e.printStackTrace();
+            }
+        }
+
+        return value;
+    }
+
+    /**
+     * Handle a symbolic choice for use directly in Vitruvius reactions.
+     * This version takes an Integer (boxed) to work with Vitruvius user interaction results.
+     *
+     * @param selected The selected choice (can be null if dialog cancelled)
+     * @param min Minimum valid choice
+     * @param max Maximum valid choice
+     * @return The selected value, or -1 if null
+     */
+    public static int symbolicVitruviusChoice(Integer selected, int min, int max) {
+        System.out.println("[SymbolicComparison] symbolicVitruviusChoice CALLED!");
+        System.out.println("  - Input value: " + selected);
+        System.out.println("  - Range: [" + min + ", " + max + "]");
+
+        if (selected == null) {
+            System.out.println("  - Selected is null, returning -1");
+            return -1; // Dialog cancelled
+        }
+
+        // Check if the value has a tag
+        Tag tag = null;
+        try {
+            // Try to extract tag using Galette's Tainter
+            tag = edu.neu.ccs.prl.galette.internal.runtime.Tainter.getTag(selected);
+            if (tag != null && !tag.isEmpty()) {
+                System.out.println("  - Tag found: " + tag);
+                System.out.println("  - Tag labels: " + java.util.Arrays.toString(tag.getLabels()));
+            } else {
+                System.out.println("  - No tag or empty tag on Integer value");
+            }
+        } catch (Exception e) {
+            System.out.println("  - Exception getting tag: " + e.getClass().getName() + ": " + e.getMessage());
+            // No tag available, will fall back to concrete handling
+        }
+
+        System.out.println("  - Delegating to symbolicChoice...");
+        int result = symbolicChoice(selected.intValue(), tag, min, max);
+        System.out.println("  - symbolicVitruviusChoice returning: " + result);
+        return result;
+    }
 }
