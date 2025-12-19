@@ -479,13 +479,9 @@ public class PathExplorer {
     }
 
     /**
-     * Generate the next input combination for multi-variable exploration with proper backtracking.
-     *
-     * Strategy: Enumerate combinations like an odometer
-     * - Variables indexed 0 (leftmost) to n-1 (rightmost)
-     * - Increment rightmost variable first
-     * - When rightmost exhausted, reset it and increment previous variable
-     * - Track negations separately per variable for proper backtracking
+     * Generate the next input combination for multi-variable exploration.
+     * This version extracts variable names from the constraints themselves,
+     * similar to how generateNextInput works for single variables.
      */
     private Map<String, Integer> generateNextMultiVarInput(
             List<Expression> currentConstraints, List<String> variableNames, int numVars) {
@@ -494,101 +490,80 @@ public class PathExplorer {
             return null;
         }
 
-        // Constraints alternate: [domain1, equality1, domain2, equality2, ...]
-        // For 2 variables: constraints = [domain1, switch1, domain2, switch2]
-        // We need to extract equality constraints (indices 1, 3, 5, ...)
-        List<Expression> pathConstraints = new ArrayList<>();
+        // Extract switch constraints (odd indices: 1, 3, 5, ...)
+        List<Expression> switchConstraints = new ArrayList<>();
         for (int i = 0; i < numVars; i++) {
-            int equalityIndex = i * 2 + 1; // 1, 3, 5, ...
-            if (equalityIndex < currentConstraints.size()) {
-                pathConstraints.add(currentConstraints.get(equalityIndex));
+            int switchIndex = i * 2 + 1; // 1, 3, 5, ...
+            if (switchIndex < currentConstraints.size()) {
+                switchConstraints.add(currentConstraints.get(switchIndex));
             }
         }
 
-        if (pathConstraints.isEmpty()) {
-            if (DEBUG) System.out.println("No path constraints to negate");
+        if (switchConstraints.isEmpty()) {
+            if (DEBUG) System.out.println("No switch constraints to negate");
             return null;
         }
 
-        // Try to increment the rightmost (last) variable first
-        // Note: We need to map from constraints to variables - multiple constraints may be for the same variable
-        // For simplicity, we'll try to negate the last constraint for the last variable
-        int rightmostVarIdx = numVars - 1; // Use number of variables, not number of constraints
-
-        // Find the last constraint that involves the rightmost variable
-        Expression rightmostConstraint = null;
-        for (int i = pathConstraints.size() - 1; i >= 0; i--) {
-            Expression constraint = pathConstraints.get(i);
-            // Check if this constraint involves the rightmost variable
-            // For now, we'll just use the last constraint for the rightmost variable
-            if (constraint.toString().contains(variableNames.get(rightmostVarIdx))) {
-                rightmostConstraint = constraint;
-                break;
-            }
-        }
-
-        if (rightmostConstraint == null) {
-            // Fallback: use any constraint for the rightmost variable
-            rightmostConstraint = pathConstraints.get(pathConstraints.size() - 1);
-        }
-
-        Expression negatedRightmost = ConstraintSolver.negateConstraint(rightmostConstraint);
-
-        // Add negation for rightmost variable
-        negationsPerVariable.get(rightmostVarIdx).add(negatedRightmost);
+        // For multi-variable, we use a simple strategy:
+        // Negate the last switch constraint to explore alternative paths
+        Expression lastSwitch = switchConstraints.get(switchConstraints.size() - 1);
+        Expression negatedSwitch = ConstraintSolver.negateConstraint(lastSwitch);
+        negatedSwitchConstraints.add(negatedSwitch);
 
         if (DEBUG) {
-            System.out.println("Incrementing rightmost variable (var" + rightmostVarIdx + "): " + negatedRightmost);
+            System.out.println("Negating switch constraint: " + lastSwitch + " -> " + negatedSwitch);
         }
 
-        // Try to solve
-        Map<String, Integer> result = trySolveMultiVarWithPerVarNegations(variableNames);
+        // Build combined constraint: domain AND all negated switches
+        Expression combinedConstraint = domainConstraint;
 
-        if (result != null) {
-            return result; // Success - found next value for rightmost variable
+        for (Expression negated : negatedSwitchConstraints) {
+            if (combinedConstraint == null) {
+                combinedConstraint = negated;
+            } else {
+                combinedConstraint = new BinaryOperation(Operator.AND, combinedConstraint, negated);
+            }
         }
 
-        // Rightmost variable exhausted - need to backtrack
-        if (DEBUG) System.out.println("Rightmost variable exhausted, backtracking...");
+        if (DEBUG) {
+            System.out.println("Combined constraint for solver: " + combinedConstraint);
+        }
 
-        // Backtrack: find a previous variable that can be incremented
-        for (int varIdx = rightmostVarIdx; varIdx >= 0; varIdx--) {
-            // Clear negations for this and all later variables (reset them)
-            for (int j = varIdx; j < numVars; j++) {
-                negationsPerVariable.get(j).clear();
+        // Solve the combined constraint
+        InputSolution solution = ConstraintSolver.solveConstraint(combinedConstraint);
+
+        if (solution == null || !solution.isSatisfiable()) {
+            if (DEBUG) System.out.println("UNSAT - no more inputs satisfy the constraints");
+            return null;
+        }
+
+        // Extract values for all variables from the solution
+        Map<String, Integer> resultMap = new HashMap<>();
+
+        // The solver returns values with the qualified names from constraints
+        for (String key : solution.getLabels()) {
+            Object value = solution.getValue(key);
+            if (value != null) {
+                if (DEBUG) {
+                    System.out.println("Found value in solution: " + key + " = " + value);
+                }
+
+                if (value instanceof Integer) {
+                    resultMap.put(key, (Integer) value);
+                } else if (value instanceof Number) {
+                    resultMap.put(key, ((Number) value).intValue());
+                }
             }
+        }
 
-            if (varIdx == 0) {
-                // Can't backtrack further - all combinations exhausted
-                if (DEBUG) System.out.println("Backtracked to first variable - all paths explored");
-                return null;
-            }
-
-            // Try to increment the previous variable (varIdx - 1)
-            int prevVarIdx = varIdx - 1;
-            Expression prevConstraint = pathConstraints.get(prevVarIdx);
-            Expression negatedPrev = ConstraintSolver.negateConstraint(prevConstraint);
-            negationsPerVariable.get(prevVarIdx).add(negatedPrev);
-
+        if (resultMap.isEmpty()) {
             if (DEBUG) {
-                System.out.println("Backtracking to var" + prevVarIdx + ", adding negation: " + negatedPrev);
+                System.out.println("Warning: No values found in solution. Available keys: " + solution.getLabels());
             }
-
-            result = trySolveMultiVarWithPerVarNegations(variableNames);
-
-            if (result != null) {
-                // Success - found next value at this level
-                if (DEBUG) System.out.println("Found solution after backtracking: " + result);
-                return result;
-            }
-
-            // This variable also exhausted, continue backtracking
-            if (DEBUG) System.out.println("Variable " + prevVarIdx + " also exhausted, continuing backtrack...");
+            return null;
         }
 
-        // All variables exhausted
-        if (DEBUG) System.out.println("All combinations exhausted");
-        return null;
+        return resultMap;
     }
 
     /**
