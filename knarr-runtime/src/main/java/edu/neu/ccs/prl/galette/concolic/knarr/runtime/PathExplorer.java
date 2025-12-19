@@ -499,13 +499,30 @@ public class PathExplorer {
             return null;
         }
 
-        // Extract switch constraints (odd indices: 1, 3, 5, ...)
+        // Extract switch constraints
+        // After first iteration, we only get switch constraints (no domain constraints)
+        // So we need to handle both cases: with and without domain constraints
         List<Expression> switchConstraints = new ArrayList<>();
-        for (int i = 0; i < numVars; i++) {
-            int switchIndex = i * 2 + 1; // 1, 3, 5, ...
-            if (switchIndex < currentConstraints.size()) {
-                switchConstraints.add(currentConstraints.get(switchIndex));
+
+        if (currentConstraints.size() == numVars * 2) {
+            // First iteration: has both domain and switch constraints
+            // Extract switch constraints from odd indices: 1, 3, 5, ...
+            for (int i = 0; i < numVars; i++) {
+                int switchIndex = i * 2 + 1;
+                if (switchIndex < currentConstraints.size()) {
+                    switchConstraints.add(currentConstraints.get(switchIndex));
+                }
             }
+        } else if (currentConstraints.size() == numVars) {
+            // Subsequent iterations: only switch constraints
+            switchConstraints.addAll(currentConstraints);
+        } else {
+            if (DEBUG) {
+                System.out.println("Unexpected number of constraints: " + currentConstraints.size() + " for " + numVars
+                        + " variables");
+            }
+            // Try to handle it anyway - assume they're all switch constraints
+            switchConstraints.addAll(currentConstraints);
         }
 
         if (switchConstraints.isEmpty()) {
@@ -513,24 +530,92 @@ public class PathExplorer {
             return null;
         }
 
-        // For multi-variable, we use a simple strategy:
-        // Negate the last switch constraint to explore alternative paths
-        Expression lastSwitch = switchConstraints.get(switchConstraints.size() - 1);
-        Expression negatedSwitch = ConstraintSolver.negateConstraint(lastSwitch);
-        negatedSwitchConstraints.add(negatedSwitch);
+        // Multi-variable enumeration strategy:
+        // For proper exploration of all combinations, we need to handle each variable separately
+        // We maintain separate negation lists per variable in negationsPerVariable
+        // (negationsPerVariable is already initialized in exploreMultipleIntegers)
 
-        if (DEBUG) {
-            System.out.println("Negating switch constraint: " + lastSwitch + " -> " + negatedSwitch);
+        // Determine which variable to increment next (like an odometer)
+        // Start with the rightmost variable and work backwards
+        Expression switchToNegate = null;
+
+        // Extract domain size from domain constraint to avoid hard-coding
+        // Domain constraint looks like: (0<=var)&&(var<5) which means domain is [0,4]
+        int maxDomainSize = 5; // Default, will be updated from domain constraint
+        if (domainConstraint != null) {
+            String domainStr = domainConstraint.toString();
+            // Try to extract the upper bound from patterns like "var<5" or "var<=4"
+            if (domainStr.contains("<")) {
+                String[] parts = domainStr.split("<");
+                for (String part : parts) {
+                    try {
+                        int val = Integer.parseInt(part.replaceAll("[^0-9]", ""));
+                        if (val > 0 && val < 100) { // Sanity check
+                            maxDomainSize = val;
+                            break;
+                        }
+                    } catch (NumberFormatException e) {
+                        // Ignore and continue
+                    }
+                }
+            }
         }
 
-        // Build combined constraint: domain AND all negated switches
+        if (DEBUG) {
+            System.out.println("Using domain size: " + maxDomainSize);
+        }
+
+        // Try to find the next value for the rightmost variable first
+        for (int i = numVars - 1; i >= 0; i--) {
+            if (i >= switchConstraints.size()) {
+                continue; // Skip if we don't have a constraint for this variable
+            }
+
+            Expression currentSwitch = switchConstraints.get(i);
+            List<Expression> varNegations = negationsPerVariable.get(i);
+
+            // Check if we can still explore more values for this variable
+            // We can have at most (domainSize - 1) negations before exhaustion
+            if (varNegations.size() < maxDomainSize - 1) {
+                switchToNegate = currentSwitch;
+
+                // Negate this switch and add to this variable's negation list
+                Expression negated = ConstraintSolver.negateConstraint(switchToNegate);
+                varNegations.add(negated);
+
+                if (DEBUG) {
+                    System.out.println("Variable " + i + ": negating " + switchToNegate + " -> " + negated);
+                    System.out.println("Variable " + i + " now has " + varNegations.size() + " negations");
+                }
+
+                // If this is not the rightmost variable, clear negations for all variables to the right
+                // (reset them to start from 0 again)
+                for (int j = i + 1; j < numVars; j++) {
+                    negationsPerVariable.get(j).clear();
+                    if (DEBUG) System.out.println("Clearing negations for variable " + j);
+                }
+
+                break;
+            }
+        }
+
+        if (switchToNegate == null) {
+            // All variables exhausted
+            if (DEBUG) System.out.println("All variables exhausted - no more combinations");
+            return null;
+        }
+
+        // Build combined constraint: domain AND all negations for all variables
         Expression combinedConstraint = domainConstraint;
 
-        for (Expression negated : negatedSwitchConstraints) {
-            if (combinedConstraint == null) {
-                combinedConstraint = negated;
-            } else {
-                combinedConstraint = new BinaryOperation(Operator.AND, combinedConstraint, negated);
+        // Add all negations from all variables
+        for (int i = 0; i < numVars; i++) {
+            for (Expression negated : negationsPerVariable.get(i)) {
+                if (combinedConstraint == null) {
+                    combinedConstraint = negated;
+                } else {
+                    combinedConstraint = new BinaryOperation(Operator.AND, combinedConstraint, negated);
+                }
             }
         }
 
