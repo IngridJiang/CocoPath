@@ -1,20 +1,20 @@
 package edu.neu.ccs.prl.galette.vitruvius;
 
+import edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathConditionWrapper;
 import edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathExplorer;
 import edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathUtils;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
-import org.eclipse.emf.ecore.resource.Resource;
-import org.eclipse.emf.ecore.xmi.impl.XMIResourceFactoryImpl;
 
 /**
  * Automatic Vitruvius path exploration using constraint-based input generation.
  *
  * This example demonstrates PROPER symbolic execution:
- * - Inputs generated automatically by negating constraints
- * - Iterative path exploration until all paths covered
+ * 1. No manual domain constraints - extracted from switch statements
+ * 2. Automatic constraint collection via bytecode instrumentation
+ * 3. Constraint-based input generation to explore all feasible paths
+ * 4. No hardcoded test inputs - the solver finds them!
  *
  * @purpose Automatic path exploration for Vitruvius VSUM
  * @feature Explores all user dialog choices
@@ -24,46 +24,14 @@ import org.eclipse.emf.ecore.xmi.impl.XMIResourceFactoryImpl;
 public class AutomaticVitruvPathExploration {
 
     public static void main(String[] args) {
-
         // Verify instrumentation is working
-        System.out.println("[AutomaticVitruvPathExploration:main] Checking instrumentation...");
-        try {
-            Integer testValue = 42;
-            edu.neu.ccs.prl.galette.internal.runtime.Tag testTag =
-                    edu.neu.ccs.prl.galette.internal.runtime.Tag.of("test");
-            Integer taggedTest = edu.neu.ccs.prl.galette.internal.runtime.Tainter.setTag(testValue, testTag);
-            edu.neu.ccs.prl.galette.internal.runtime.Tag retrievedTag =
-                    edu.neu.ccs.prl.galette.internal.runtime.Tainter.getTag(taggedTest);
+        AutomaticVitruvPathExplorationHelper.verifyInstrumentation();
 
-            if (retrievedTag == null) {
-                System.err.println("ERROR: Instrumentation is NOT working! Tainter.getTag() returned null.");
-                System.err.println("The program must be run with the instrumented JVM and Galette agent.");
-                System.err.println("Exiting - symbolic execution will not work without instrumentation.");
-                System.exit(1);
-            } else {
-                System.out.println("✓ Instrumentation is working. Tag retrieved: "
-                        + retrievedTag.getLabels()[0]);
-            }
-        } catch (Exception e) {
-            System.err.println("ERROR: Failed to verify instrumentation: " + e.getMessage());
-            e.printStackTrace();
-            System.exit(1);
-        }
-
-        // Register XMI resource factory
-        Resource.Factory.Registry.INSTANCE.getExtensionToFactoryMap().put("*", new XMIResourceFactoryImpl());
+        // Initialize EMF
+        AutomaticVitruvPathExplorationHelper.initializeEMF();
 
         // Load Vitruvius Test class
-        Object testInstance;
-        try {
-            Class<?> testClass = Class.forName("tools.vitruv.methodologisttemplate.vsum.Test");
-            testInstance = testClass.getDeclaredConstructor().newInstance();
-            System.out.println("[AutomaticVitruvPathExploration:main] Loaded Vitruvius Test class");
-        } catch (Exception e) {
-            System.err.println(
-                    "[AutomaticVitruvPathExploration:main] Failed to load Vitruvius Test class: " + e.getMessage());
-            return;
-        }
+        Object testInstance = AutomaticVitruvPathExplorationHelper.loadVitruviusTestClass();
 
         // Create path explorer
         PathExplorer explorer = new PathExplorer();
@@ -86,7 +54,7 @@ public class AutomaticVitruvPathExploration {
                 "CreateAscetTaskRoutine:execute:userChoice"); // Qualified name matching the reaction
 
         // Export results
-        exportResultsToJson(paths, "execution_paths_automatic.json");
+        AutomaticVitruvPathExplorationHelper.exportSingleVarResults(paths, "execution_paths_automatic.json");
     }
 
     /**
@@ -96,8 +64,7 @@ public class AutomaticVitruvPathExploration {
      * We pass it directly to insertTask to preserve the tag.
      * The reaction will handle all symbolic execution concerns.
      */
-    private static edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathConditionWrapper executeVitruvWithInput(
-            Object testInstance, Object input) {
+    private static PathConditionWrapper executeVitruvWithInput(Object testInstance, Object input) {
 
         // Extract concrete value for display/directory name
         int concreteValue = (input instanceof Integer) ? (Integer) input : 0;
@@ -106,7 +73,8 @@ public class AutomaticVitruvPathExploration {
                 "[AutomaticVitruvPathExploration:executeVitruvWithInput] → Executing with input = " + concreteValue);
 
         // Create output directory for this execution
-        Path workDir = Paths.get("galette-output-automatic-" + concreteValue);
+        Path workDir =
+                AutomaticVitruvPathExplorationHelper.createWorkingDirectory("galette-output-automatic", concreteValue);
 
         try {
             // Execute Vitruvius transformation first
@@ -139,80 +107,14 @@ public class AutomaticVitruvPathExploration {
             }
             e.printStackTrace();
 
-            return new edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathConditionWrapper();
+            return new PathConditionWrapper();
         }
 
         // Return collected constraints
-        edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathConditionWrapper pc = PathUtils.getCurPC();
+        PathConditionWrapper pc = PathUtils.getCurPC();
+        System.out.println("[AutomaticVitruvPathExploration:executeVitruvWithInput]   Constraints: " + pc.size());
         System.out.println("[AutomaticVitruvPathExploration:executeVitruvWithInput]   Returning PC with " + pc.size()
                 + " constraints");
         return pc;
-    }
-
-    /**
-     * Export results to JSON for visualization.
-     */
-    private static void exportResultsToJson(List<PathExplorer.PathRecord> paths, String filename) {
-        try {
-            java.io.PrintWriter writer = new java.io.PrintWriter(filename);
-            writer.println("[");
-
-            for (int i = 0; i < paths.size(); i++) {
-                PathExplorer.PathRecord path = paths.get(i);
-
-                writer.println("  {");
-                writer.println("    \"pathId\": " + (i + 1) + ",");
-                writer.println("    \"symbolicInputs\": {");
-
-                // Write inputs
-                int inputCount = 0;
-                for (java.util.Map.Entry<String, Object> entry : path.inputs.entrySet()) {
-                    writer.print("      \"" + entry.getKey() + "\": ");
-                    if (entry.getValue() instanceof String) {
-                        writer.print("\"" + entry.getValue() + "\"");
-                    } else {
-                        writer.print(entry.getValue());
-                    }
-                    inputCount++;
-                    if (inputCount < path.inputs.size()) {
-                        writer.println(",");
-                    } else {
-                        writer.println();
-                    }
-                }
-
-                writer.println("    },");
-                writer.println("    \"constraints\": [");
-
-                // Write constraints
-                for (int j = 0; j < path.constraints.size(); j++) {
-                    writer.print("      \"" + path.constraints.get(j).toString() + "\"");
-                    if (j < path.constraints.size() - 1) {
-                        writer.println(",");
-                    } else {
-                        writer.println();
-                    }
-                }
-
-                writer.println("    ],");
-                writer.println("    \"executionTime\": " + path.executionTimeMs);
-
-                if (i < paths.size() - 1) {
-                    writer.println("  },");
-                } else {
-                    writer.println("  }");
-                }
-            }
-
-            writer.println("]");
-            writer.close();
-
-            System.out.println(
-                    "\n[AutomaticVitruvPathExploration:exportResultsToJson] 📄 Results exported to: " + filename);
-
-        } catch (Exception e) {
-            System.err.println(
-                    "[AutomaticVitruvPathExploration:exportResultsToJson] Failed to export results: " + e.getMessage());
-        }
     }
 }

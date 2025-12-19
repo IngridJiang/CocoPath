@@ -256,6 +256,11 @@ public class PathExplorer {
         return new ArrayList<>(exploredPaths);
     }
 
+    public List<PathRecord> exploreMultipleIntegers(
+            List<String> variableNames, List<Integer> initialValues, MultiVarPathExecutor executor) {
+        return exploreMultipleIntegers(variableNames, initialValues, executor, null);
+    }
+
     /**
      * Explore all paths for multiple symbolic integer variables.
      *
@@ -268,7 +273,10 @@ public class PathExplorer {
      * @return List of explored paths
      */
     public List<PathRecord> exploreMultipleIntegers(
-            List<String> variableNames, List<Integer> initialValues, MultiVarPathExecutor executor) {
+            List<String> variableNames,
+            List<Integer> initialValues,
+            MultiVarPathExecutor executor,
+            String qualifiedName) {
 
         if (variableNames.size() != initialValues.size()) {
             throw new IllegalArgumentException("Variable names and initial values must have the same size");

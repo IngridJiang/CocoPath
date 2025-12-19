@@ -3,14 +3,9 @@ package edu.neu.ccs.prl.galette.vitruvius;
 import edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathConditionWrapper;
 import edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathExplorer;
 import edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathUtils;
-import java.io.IOException;
 import java.lang.reflect.Method;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
-import org.eclipse.emf.ecore.resource.Resource;
-import org.eclipse.emf.ecore.xmi.impl.XMIResourceFactoryImpl;
 
 /**
  * Automatic multi-variable path exploration for Vitruvius transformations.
@@ -29,13 +24,15 @@ public class AutomaticVitruvMultiVarPathExploration {
     public static void main(String[] args) {
         System.out.println("[AutomaticVitruvMultiVarPathExploration:main] CocoPath\n");
 
-        // Register XMI resource factory (CRITICAL for EMF resource creation)
-        Resource.Factory.Registry.INSTANCE.getExtensionToFactoryMap().put("*", new XMIResourceFactoryImpl());
+        // Verify instrumentation is working
+        AutomaticVitruvPathExplorationHelper.verifyInstrumentation();
+
+        // Initialize EMF
+        AutomaticVitruvPathExplorationHelper.initializeEMF();
 
         try {
             // Load Vitruvius Test class
-            Class<?> testClass = Class.forName("tools.vitruv.methodologisttemplate.vsum.Test");
-            Object testInstance = testClass.getDeclaredConstructor().newInstance();
+            Object testInstance = AutomaticVitruvPathExplorationHelper.loadVitruviusTestClass();
 
             // Setup path explorer
             PathExplorer explorer = new PathExplorer();
@@ -65,7 +62,8 @@ public class AutomaticVitruvMultiVarPathExploration {
             }
 
             // Save results to JSON
-            saveResultsToJson(paths, "execution_paths_multivar.json");
+            AutomaticVitruvPathExplorationHelper.exportMultiVarResults(
+                    paths, "execution_paths_multivar.json", variableNames);
 
             System.out.println("\n[AutomaticVitruvMultiVarPathExploration:main] Complete ");
             System.out.println(
@@ -117,18 +115,8 @@ public class AutomaticVitruvMultiVarPathExploration {
         int input2 = taggedInput2.intValue();
 
         // Create unique working directory for this path, cleaning any stale outputs to avoid proxy issues
-        Path workDir = Paths.get("galette-output-multivar-" + input1 + "_" + input2);
-
-        try {
-            if (Files.exists(workDir)) {
-                deleteDirectory(workDir);
-            }
-            Files.createDirectories(workDir);
-        } catch (IOException e) {
-            System.err.println(
-                    "[AutomaticVitruvMultiVarPathExploration:executeVitruvWithTwoInputs] Warning: Could not create working directory: "
-                            + e.getMessage());
-        }
+        Path workDir = AutomaticVitruvPathExplorationHelper.createWorkingDirectory(
+                "galette-output-multivar", input1 + "_" + input2);
 
         // Reset path condition
         PathUtils.resetPC();
@@ -167,87 +155,5 @@ public class AutomaticVitruvMultiVarPathExploration {
         }
 
         return pc;
-    }
-
-    /**
-     * Save path exploration results to JSON file (manually formatted).
-     */
-    private static void saveResultsToJson(List<PathExplorer.PathRecord> paths, String filename) {
-        try {
-            StringBuilder json = new StringBuilder();
-            json.append("{\n");
-            json.append("  \"total_paths\": ").append(paths.size()).append(",\n");
-            json.append("  \"num_variables\": 2,\n");
-            json.append("  \"variable_names\": [\"user_choice_1\", \"user_choice_2\"],\n");
-            json.append("  \"paths\": [\n");
-
-            for (int i = 0; i < paths.size(); i++) {
-                PathExplorer.PathRecord path = paths.get(i);
-                json.append("    {\n");
-                json.append("      \"path_id\": ").append(path.pathId).append(",\n");
-
-                // Format inputs
-                json.append("      \"inputs\": {");
-                boolean first = true;
-                for (Map.Entry<String, Object> entry : path.inputs.entrySet()) {
-                    if (!first) json.append(", ");
-                    json.append("\"").append(entry.getKey()).append("\": ").append(entry.getValue());
-                    first = false;
-                }
-                json.append("},\n");
-
-                // Format constraints
-                json.append("      \"constraints\": [");
-                for (int j = 0; j < path.constraints.size(); j++) {
-                    json.append("\"")
-                            .append(escapeJson(path.constraints.get(j).toString()))
-                            .append("\"");
-                    if (j < path.constraints.size() - 1) json.append(", ");
-                }
-                json.append("],\n");
-
-                json.append("      \"num_constraints\": ")
-                        .append(path.constraints.size())
-                        .append(",\n");
-                json.append("      \"execution_time_ms\": ")
-                        .append(path.executionTimeMs)
-                        .append("\n");
-                json.append("    }");
-                if (i < paths.size() - 1) json.append(",");
-                json.append("\n");
-            }
-
-            json.append("  ]\n");
-            json.append("}\n");
-
-            Path outputPath = Paths.get(filename);
-            Files.write(outputPath, json.toString().getBytes());
-
-            System.out.println("\n[AutomaticVitruvMultiVarPathExploration:saveResultsToJson] Saved results to: "
-                    + outputPath.toAbsolutePath());
-
-        } catch (IOException e) {
-            System.err.println("[AutomaticVitruvMultiVarPathExploration:saveResultsToJson] Error saving JSON results: "
-                    + e.getMessage());
-        }
-    }
-
-    private static String escapeJson(String str) {
-        return str.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    /**
-     * Recursively delete directory and its contents.
-     */
-    private static void deleteDirectory(Path dir) throws IOException {
-        if (Files.isDirectory(dir)) {
-            Files.walk(dir).sorted(Comparator.reverseOrder()).forEach(path -> {
-                try {
-                    Files.delete(path);
-                } catch (IOException e) {
-                    // Ignore
-                }
-            });
-        }
     }
 }
