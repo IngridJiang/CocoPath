@@ -28,7 +28,7 @@ public class AutomaticVitruvMultiVarPathExploration {
     private static final boolean DEBUG = Boolean.getBoolean("path.explorer.debug");
 
     public static void main(String[] args) {
-        System.out.println("CocoPath\n");
+        System.out.println("[AutomaticVitruvMultiVarPathExploration:main] CocoPath\n");
 
         // Register XMI resource factory (CRITICAL for EMF resource creation)
         Resource.Factory.Registry.INSTANCE.getExtensionToFactoryMap().put("*", new XMIResourceFactoryImpl());
@@ -48,7 +48,7 @@ public class AutomaticVitruvMultiVarPathExploration {
             List<Integer> initialValues = Arrays.asList(0, 0);
 
             // Explore all paths
-            System.out.println("Starting multi-variable path exploration...");
+            System.out.println("[AutomaticVitruvMultiVarPathExploration:main] Starting multi-variable path exploration...");
 
             List<PathExplorer.PathRecord> paths =
                     explorer.exploreMultipleIntegers(variableNames, initialValues, inputs -> {
@@ -56,8 +56,8 @@ public class AutomaticVitruvMultiVarPathExploration {
                     });
 
             // Display results
-            System.out.println("\nResults");
-            System.out.println("Total paths explored: " + paths.size());
+            System.out.println("\n[AutomaticVitruvMultiVarPathExploration:main] Results");
+            System.out.println("[AutomaticVitruvMultiVarPathExploration:main] Total paths explored: " + paths.size());
             System.out.println();
 
             for (PathExplorer.PathRecord path : paths) {
@@ -67,12 +67,12 @@ public class AutomaticVitruvMultiVarPathExploration {
             // Save results to JSON
             saveResultsToJson(paths, "execution_paths_multivar.json");
 
-            System.out.println("\nComplete ");
-            System.out.println("Results saved to: execution_paths_multivar.json");
-            System.out.println("Generated models saved to: galette-output-multivar-*/");
+            System.out.println("\n[AutomaticVitruvMultiVarPathExploration:main] Complete ");
+            System.out.println("[AutomaticVitruvMultiVarPathExploration:main] Results saved to: execution_paths_multivar.json");
+            System.out.println("[AutomaticVitruvMultiVarPathExploration:main] Generated models saved to: galette-output-multivar-*/");
 
         } catch (Exception e) {
-            System.err.println("Error during path exploration:");
+            System.err.println("[AutomaticVitruvMultiVarPathExploration:main] Error during path exploration:");
             e.printStackTrace();
             System.exit(1);
         }
@@ -148,13 +148,13 @@ public class AutomaticVitruvMultiVarPathExploration {
             symbolicExpr1 = GaletteSymbolicator.getExpressionForTag(tag1);
 
             System.out.println(
-                    "✓ Tag detected for input 1: label = \"" + label1 + "\", variable name = \"" + varName1 + "\"");
+                    "[AutomaticVitruvMultiVarPathExploration:executeVitruvWithTwoInputs] ✓ Tag detected for input 1: label = \"" + label1 + "\", variable name = \"" + varName1 + "\"");
             if (symbolicExpr1 != null) {
-                System.out.println("  Symbolic expression: " + symbolicExpr1);
+                System.out.println("[AutomaticVitruvMultiVarPathExploration:executeVitruvWithTwoInputs]   Symbolic expression: " + symbolicExpr1);
             }
         } else {
 
-            System.out.println("No tag found for input 1");
+            System.out.println("[AutomaticVitruvMultiVarPathExploration:executeVitruvWithTwoInputs] No tag found for input 1");
         }
 
         if (tag2 != null && tag2.size() > 0) {
@@ -174,12 +174,12 @@ public class AutomaticVitruvMultiVarPathExploration {
             symbolicExpr2 = GaletteSymbolicator.getExpressionForTag(tag2);
 
             System.out.println(
-                    "✓ Tag detected for input 2: label = \"" + label2 + "\", variable name = \"" + varName2 + "\"");
+                    "[AutomaticVitruvMultiVarPathExploration:executeVitruvWithTwoInputs] ✓ Tag detected for input 2: label = \"" + label2 + "\", variable name = \"" + varName2 + "\"");
             if (symbolicExpr2 != null) {
-                System.out.println("  Symbolic expression: " + symbolicExpr2);
+                System.out.println("[AutomaticVitruvMultiVarPathExploration:executeVitruvWithTwoInputs]   Symbolic expression: " + symbolicExpr2);
             }
         } else {
-            System.out.println("No tag found for input 2");
+            System.out.println("[AutomaticVitruvMultiVarPathExploration:executeVitruvWithTwoInputs] No tag found for input 2");
         }
 
         // Extract concrete values for display/directory naming
@@ -195,7 +195,7 @@ public class AutomaticVitruvMultiVarPathExploration {
             }
             Files.createDirectories(workDir);
         } catch (IOException e) {
-            System.err.println("Warning: Could not create working directory: " + e.getMessage());
+            System.err.println("[AutomaticVitruvMultiVarPathExploration:executeVitruvWithTwoInputs] Warning: Could not create working directory: " + e.getMessage());
         }
 
         // Reset path condition
@@ -212,7 +212,7 @@ public class AutomaticVitruvMultiVarPathExploration {
         PathUtils.addSwitchConstraint(varName2, taggedInput2);
 
         if (DEBUG) {
-            System.out.println("[Execute] Constraints will be recorded by reactions via SymbolicComparison");
+            System.out.println("[AutomaticVitruvMultiVarPathExploration:executeVitruvWithTwoInputs] Constraints will be recorded by reactions via SymbolicComparison");
         }
 
         try {
@@ -222,13 +222,13 @@ public class AutomaticVitruvMultiVarPathExploration {
 
             if (DEBUG) {
                 System.out.println(
-                        "[Execute] Invoking insertTwoTasks(" + workDir + ", " + input1 + ", " + input2 + ")");
+                        "[AutomaticVitruvMultiVarPathExploration:executeVitruvWithTwoInputs] Invoking insertTwoTasks(" + workDir + ", " + input1 + ", " + input2 + ")");
             }
 
             insertTwoTasks.invoke(testInstance, workDir, taggedInput1, taggedInput2);
 
         } catch (Exception e) {
-            System.err.println("Error executing Vitruvius transformation:");
+            System.err.println("[AutomaticVitruvMultiVarPathExploration:executeVitruvWithTwoInputs] Error executing Vitruvius transformation:");
             e.printStackTrace();
             // Return collected constraints even if execution failed
         }
@@ -237,7 +237,7 @@ public class AutomaticVitruvMultiVarPathExploration {
         PathConditionWrapper pc = PathUtils.getCurPC();
 
         if (DEBUG && pc != null) {
-            System.out.println("[Execute] Collected " + pc.getConstraints().size() + " total constraints");
+            System.out.println("[AutomaticVitruvMultiVarPathExploration:executeVitruvWithTwoInputs] Collected " + pc.getConstraints().size() + " total constraints");
         }
 
         return pc;
@@ -247,17 +247,17 @@ public class AutomaticVitruvMultiVarPathExploration {
         // int primitiveTaggedInput = taggedInput.intValue();
         Tag tagAfterUnbox = Tainter.getTag(primitiveTaggedInput);
         if (tagAfterUnbox != null && tagAfterUnbox.size() > 0) {
-            System.out.println("✓ Tag survived unboxing for input " + primitiveTaggedInput);
+            System.out.println("[AutomaticVitruvMultiVarPathExploration:validateTagAfterRebox] ✓ Tag survived unboxing for input " + primitiveTaggedInput);
         } else {
-            System.out.println("✗ Tag lost during unboxing for input " + primitiveTaggedInput);
+            System.out.println("[AutomaticVitruvMultiVarPathExploration:validateTagAfterRebox] ✗ Tag lost during unboxing for input " + primitiveTaggedInput);
         }
 
         Integer reboxedTaggedInput = Integer.valueOf(primitiveTaggedInput);
         Tag tagAfterRebox = Tainter.getTag(reboxedTaggedInput);
         if (tagAfterRebox != null && tagAfterRebox.size() > 0) {
-            System.out.println("✓ Tag survived reboxing for input " + primitiveTaggedInput);
+            System.out.println("[AutomaticVitruvMultiVarPathExploration:validateTagAfterRebox] ✓ Tag survived reboxing for input " + primitiveTaggedInput);
         } else {
-            System.out.println("✗ Tag lost during reboxing for input " + primitiveTaggedInput);
+            System.out.println("[AutomaticVitruvMultiVarPathExploration:validateTagAfterRebox] ✗ Tag lost during reboxing for input " + primitiveTaggedInput);
         }
     }
 
@@ -315,10 +315,10 @@ public class AutomaticVitruvMultiVarPathExploration {
             Path outputPath = Paths.get(filename);
             Files.write(outputPath, json.toString().getBytes());
 
-            System.out.println("\nSaved results to: " + outputPath.toAbsolutePath());
+            System.out.println("\n[AutomaticVitruvMultiVarPathExploration:saveResultsToJson] Saved results to: " + outputPath.toAbsolutePath());
 
         } catch (IOException e) {
-            System.err.println("Error saving JSON results: " + e.getMessage());
+            System.err.println("[AutomaticVitruvMultiVarPathExploration:saveResultsToJson] Error saving JSON results: " + e.getMessage());
         }
     }
 
