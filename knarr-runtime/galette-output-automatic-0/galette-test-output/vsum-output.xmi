@@ -4,6 +4,6 @@
     <tasks name="specialname"/>
   </model2:ComponentContainer>
   <model:AscetModule>
-    <tasks xsi:type="model:InterruptTask" name="specialname"/>
+    <tasks xsi:type="model:InitTask" name="specialname"/>
   </model:AscetModule>
 </xmi:XMI>

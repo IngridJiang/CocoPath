@@ -16,9 +16,9 @@ import za.ac.sun.cs.green.expr.Operation.Operator;
  */
 public class PathExplorer {
 
-    private static final boolean DEBUG = Boolean.getBoolean("path.explorer.debug");
-    private static final int MAX_ITERATIONS =
-            Integer.getInteger("path.explorer.max.iterations", 30); // Reduced from 100 for debugging
+    private static final boolean DEBUG = true; // Boolean.getBoolean("path.explorer.debug");
+    private static final int MAX_ITERATIONS = 6;
+    // Integer.getInteger("path.explorer.max.iterations", 30); // Reduced from 100 for debugging
 
     public static class PathRecord {
         public final int pathId;
@@ -72,6 +72,20 @@ public class PathExplorer {
     }
 
     public List<PathRecord> exploreInteger(String variableName, int initialValue, PathExecutor executor) {
+        return exploreInteger(variableName, initialValue, executor, null);
+    }
+
+    /**
+     * Explore integer paths with a custom qualified name for symbolic execution.
+     *
+     * @param variableName The display name for the variable
+     * @param initialValue The initial concrete value
+     * @param executor The executor to run for each path
+     * @param qualifiedName The qualified name to use for symbolic execution (e.g., "CreateAscetTaskRoutine:execute:userChoice")
+     * @return List of explored paths
+     */
+    public List<PathRecord> exploreInteger(
+            String variableName, int initialValue, PathExecutor executor, String qualifiedName) {
         exploredPaths.clear();
         exploredConstraintSignatures.clear();
         negatedSwitchConstraints.clear();
@@ -85,23 +99,14 @@ public class PathExplorer {
                 System.out.println("Iteration " + (iteration + 1) + ": " + variableName + " = " + currentInput);
             }
 
-            // Reset symbolic execution state
-            GaletteSymbolicator.reset();
+            // Reset path condition but NOT the symbolicator
+            // We need to preserve labelToTag mappings for tag reuse
             PathUtils.resetPC();
 
-            // Create symbolic value
-            String label = variableName + "_" + iteration;
-            Tag symbolicTag = GaletteSymbolicator.makeSymbolicInt(label, currentInput);
-            int taggedValue = Tainter.setTag(currentInput, symbolicTag);
-
-            // Store in ThreadLocal for executor to access (single variable case)
-            Map<String, Tag> varToTag = new HashMap<>();
-            varToTag.put(variableName, symbolicTag);
-            currentVarToTag.set(varToTag);
-
-            // Execute and collect constraints
+            // Execute with the concrete value
+            // The reactions will create and apply tags as needed
             long startTime = System.currentTimeMillis();
-            PathConditionWrapper pc = executor.execute(taggedValue);
+            PathConditionWrapper pc = executor.execute(currentInput);
             long endTime = System.currentTimeMillis();
 
             if (pc == null || pc.isEmpty()) {
@@ -154,6 +159,9 @@ public class PathExplorer {
         if (iteration >= MAX_ITERATIONS && DEBUG) {
             System.out.println("Reached max iterations: " + MAX_ITERATIONS);
         }
+
+        // Clean up: reset symbolicator state after exploration completes
+        GaletteSymbolicator.reset();
 
         return new ArrayList<>(exploredPaths);
     }

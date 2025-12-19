@@ -117,6 +117,8 @@ public class Test {
                 break;
         }
 
+        System.out.println("[Test:insertTwoTasks] CALLED");
+
         // 3) Setup user interactions for BOTH tasks
         TestUserInteraction userInteraction = new TestUserInteraction();
         userInteraction.addNextSingleSelection(userInput1); // For first task

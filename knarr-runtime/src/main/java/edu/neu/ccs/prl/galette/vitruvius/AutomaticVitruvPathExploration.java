@@ -1,17 +1,13 @@
 package edu.neu.ccs.prl.galette.vitruvius;
 
-import edu.neu.ccs.prl.galette.concolic.knarr.runtime.GaletteSymbolicator;
 import edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathExplorer;
 import edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathUtils;
-import edu.neu.ccs.prl.galette.internal.runtime.Tag;
-import edu.neu.ccs.prl.galette.internal.runtime.Tainter;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import org.eclipse.emf.ecore.resource.Resource;
 import org.eclipse.emf.ecore.xmi.impl.XMIResourceFactoryImpl;
-import za.ac.sun.cs.green.expr.Expression;
 
 /**
  * Automatic Vitruvius path exploration using constraint-based input generation.
@@ -28,6 +24,31 @@ import za.ac.sun.cs.green.expr.Expression;
 public class AutomaticVitruvPathExploration {
 
     public static void main(String[] args) {
+
+        // Verify instrumentation is working
+        System.out.println("[AutomaticVitruvPathExploration:main] Checking instrumentation...");
+        try {
+            Integer testValue = 42;
+            edu.neu.ccs.prl.galette.internal.runtime.Tag testTag =
+                    edu.neu.ccs.prl.galette.internal.runtime.Tag.of("test");
+            Integer taggedTest = edu.neu.ccs.prl.galette.internal.runtime.Tainter.setTag(testValue, testTag);
+            edu.neu.ccs.prl.galette.internal.runtime.Tag retrievedTag =
+                    edu.neu.ccs.prl.galette.internal.runtime.Tainter.getTag(taggedTest);
+
+            if (retrievedTag == null) {
+                System.err.println("ERROR: Instrumentation is NOT working! Tainter.getTag() returned null.");
+                System.err.println("The program must be run with the instrumented JVM and Galette agent.");
+                System.err.println("Exiting - symbolic execution will not work without instrumentation.");
+                System.exit(1);
+            } else {
+                System.out.println("✓ Instrumentation is working. Tag retrieved: "
+                        + retrievedTag.getLabels()[0]);
+            }
+        } catch (Exception e) {
+            System.err.println("ERROR: Failed to verify instrumentation: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
+        }
 
         // Register XMI resource factory
         Resource.Factory.Registry.INSTANCE.getExtensionToFactoryMap().put("*", new XMIResourceFactoryImpl());
@@ -61,7 +82,8 @@ public class AutomaticVitruvPathExploration {
         List<PathExplorer.PathRecord> paths = explorer.exploreInteger(
                 "user_choice",
                 0, // Initial value to start exploration
-                input -> executeVitruvWithInput(finalTestInstance, input));
+                input -> executeVitruvWithInput(finalTestInstance, input),
+                "CreateAscetTaskRoutine:execute:userChoice"); // Qualified name matching the reaction
 
         // Export results
         exportResultsToJson(paths, "execution_paths_automatic.json");
@@ -71,82 +93,20 @@ public class AutomaticVitruvPathExploration {
      * Execute Vitruvius transformation with given input.
      *
      * IMPORTANT: The input is a TAGGED integer value from PathExplorer.
-     * We must pass it directly to insertTask WITHOUT unboxing to preserve the tag.
+     * We pass it directly to insertTask to preserve the tag.
+     * The reaction will handle all symbolic execution concerns.
      */
     private static edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathConditionWrapper executeVitruvWithInput(
             Object testInstance, Object input) {
 
-        // NEW: Try to read tag from input to get variable name and expression dynamically
-        // First try Tainter.getTag (works with javaagent)
-        Tag tag = Tainter.getTag(input);
-
-        // Fallback 1: try PathExplorer.getTagForVariable (works without javaagent, uses ThreadLocal)
-        if (tag == null) {
-            tag = PathExplorer.getTagForVariable("user_choice");
-        }
-
-        // Fallback 2: try GaletteSymbolicator.getTagForValue
-        if (tag == null) {
-            tag = GaletteSymbolicator.getTagForValue(input);
-        }
-
-        String varName;
-        Expression symbolicExpr = null;
-
-        if (tag != null && tag.size() > 0) {
-            // Tag-aware mode: extract variable name and expression from tag
-            Object[] labels = tag.getLabels();
-            String label = labels[0].toString();
-
-            // Extract variable name from label (remove _N suffix)
-            // Label format: "user_choice_0" -> extract "user_choice"
-            if (label.contains("_")) {
-                int lastUnderscore = label.lastIndexOf("_");
-                // Check if the part after underscore is a number
-                String suffix = label.substring(lastUnderscore + 1);
-                try {
-                    Integer.parseInt(suffix);
-                    varName = label.substring(0, lastUnderscore);
-                } catch (NumberFormatException e) {
-                    varName = label;
-                }
-            } else {
-                varName = label;
-            }
-
-            // Get the symbolic expression associated with this tag
-            symbolicExpr = GaletteSymbolicator.getExpressionForTag(tag);
-
-            System.out.println("[AutomaticVitruvPathExploration:executeVitruvWithInput] ✓ Tag detected: label = \""
-                    + label + "\", variable name = \"" + varName + "\"");
-            if (symbolicExpr != null) {
-                System.out.println("[AutomaticVitruvPathExploration:executeVitruvWithInput]   Symbolic expression: "
-                        + symbolicExpr);
-            }
-        } else {
-            // Fallback mode: use hardcoded variable name
-            varName = "user_choice";
-            System.out.println(
-                    "[AutomaticVitruvPathExploration:executeVitruvWithInput] ⚠ No tag found, using fallback variable name: \""
-                            + varName + "\"");
-        }
-
-        // Extract concrete value ONLY for display/directory name
-        // DO NOT use this for execution - it loses the tag!
+        // Extract concrete value for display/directory name
         int concreteValue = (input instanceof Integer) ? (Integer) input : 0;
 
-        System.out.println("[AutomaticVitruvPathExploration:executeVitruvWithInput] → Executing with " + varName + " = "
-                + concreteValue);
+        System.out.println(
+                "[AutomaticVitruvPathExploration:executeVitruvWithInput] → Executing with input = " + concreteValue);
 
         // Create output directory for this execution
         Path workDir = Paths.get("galette-output-automatic-" + concreteValue);
-
-        // NOTE: When running with javaagent, domain and switch constraints are automatically added
-        // by TagPropagator bytecode instrumentation. However, mvn exec:java doesn't support javaagent,
-        // so we add them manually as a fallback.
-
-        // IMPROVED: Add domain constraint using variable name from tag (if available)
-        PathUtils.addIntDomainConstraint(varName, 0, 5);
 
         try {
             // Execute Vitruvius transformation first
@@ -158,9 +118,6 @@ public class AutomaticVitruvPathExploration {
 
             insertTask.invoke(testInstance, workDir, input);
             System.out.println("[AutomaticVitruvPathExploration:executeVitruvWithInput]   Method invocation succeeded");
-
-            // IMPROVED: Record switch constraint using variable name from tag (if available)
-            PathUtils.addSwitchConstraint(varName, concreteValue);
 
             System.out.println(
                     "[AutomaticVitruvPathExploration:executeVitruvWithInput] Vitruvius transformation executed");

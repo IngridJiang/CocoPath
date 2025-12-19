@@ -86,23 +86,6 @@ if [ ! -d "$TARGET_DIR" ]; then
     mkdir -p "$TARGET_DIR"
 fi
 
-# Backup existing files if they exist
-if [ -d "$TARGET_DIR/reactions" ] || [ -d "$TARGET_DIR/routines" ]; then
-    BACKUP_DIR="$INTERNAL_PATH/consistency/src/main/java/mir.backup.$(date +%Y%m%d_%H%M%S)"
-    echo "Backing up existing files to: $BACKUP_DIR"
-    mkdir -p "$BACKUP_DIR"
-
-    if [ -d "$TARGET_DIR/reactions" ]; then
-        cp -r "$TARGET_DIR/reactions" "$BACKUP_DIR/"
-    fi
-
-    if [ -d "$TARGET_DIR/routines" ]; then
-        cp -r "$TARGET_DIR/routines" "$BACKUP_DIR/"
-    fi
-    echo "Backup completed."
-    echo ""
-fi
-
 # Copy reactions
 if [ -d "$GENERATED_DIR/mir/reactions" ]; then
     echo "Copying reactions..."
@@ -126,16 +109,38 @@ else
 fi
 
 echo ""
+
+# Clean Maven repository to avoid stale JAR issues
+echo "Cleaning Maven repository cache..."
+# Remove internal consistency JAR from Maven repo
+rm -rf "$HOME/.m2/repository/edu/neu/ccs/prl/galette/amalthea-acset-consistency/1.0.0-SNAPSHOT/" 2>/dev/null || true
+echo "  Removed cached amalthea-acset-consistency JAR"
+
+# Also remove external consistency JAR if it exists
+rm -rf "$HOME/.m2/repository/tools/vitruv/tools.vitruv.methodologisttemplate.consistency/0.1.0-SNAPSHOT/" 2>/dev/null || true
+echo "  Removed cached external consistency JAR"
+
+echo ""
+echo "Building and installing internal project..."
+cd "$INTERNAL_PATH"
+mvn clean install -DskipTests -Dcheckstyle.skip=true -q
+if [ $? -eq 0 ]; then
+    echo "  Internal project built and installed successfully"
+else
+    echo "ERROR: Failed to build internal project"
+    exit 1
+fi
+
+echo ""
 echo "================================================================================"
-echo "Copy completed successfully!"
+echo "Copy and build completed successfully!"
 echo "================================================================================"
 echo ""
 echo "Next steps:"
-echo "1. Build the internal project:"
-echo "   cd $INTERNAL_PATH"
-echo "   mvn clean compile"
-echo ""
-echo "2. Run the instrumented tests:"
+echo "1. Run the instrumented tests:"
 echo "   cd /home/anne/CocoPath/CocoPath/knarr-runtime"
 echo "   ./run-instrumented-with-option-flags.sh -i"
+echo ""
+echo "2. Or run symbolic execution:"
+echo "   ./run-symbolic-execution-adapted.sh --internal"
 echo ""

@@ -226,6 +226,11 @@ if [ "$USE_EXTERNAL" = true ]; then
         exit 1
     fi
 
+    # Clean Maven repository to avoid stale JAR issues
+    echo "      Cleaning Maven repository cache..."
+    rm -rf "$HOME/.m2/repository/tools/vitruv/tools.vitruv.methodologisttemplate.consistency/0.1.0-SNAPSHOT/" 2>/dev/null || true
+    echo "      Removed cached external consistency JAR"
+
     # Check if rebuild is needed
     if [ "$FORCE_REBUILD" = true ]; then
         echo "[1/4] Building external Amalthea-acset (--force-rebuild flag set)..."
@@ -266,6 +271,12 @@ if [ "$USE_EXTERNAL" = true ]; then
 else
     echo "Mode: INTERNAL (using amalthea-acset-integration module)"
     echo "      Note: Requires external Amalthea-acset built once for Vitruvius dependencies"
+    echo ""
+
+    # Clean Maven repository to avoid stale JAR issues
+    echo "      Cleaning Maven repository cache..."
+    rm -rf "$HOME/.m2/repository/edu/neu/ccs/prl/galette/amalthea-acset-consistency/1.0.0-SNAPSHOT/" 2>/dev/null || true
+    echo "      Removed cached internal consistency JAR"
     echo ""
 
     # Check if Vitruvius dependencies are available
@@ -350,12 +361,41 @@ else
     echo "      Main class: AutomaticVitruvPathExploration (single-variable)"
 fi
 
-# Note: Javaagent is not compatible with mvn exec:java
-# We use manual constraint collection via PathUtils.addIntDomainConstraint() and addSwitchConstraint()
-# If you need dynamic instrumentation, run the JAR directly instead of using exec:java
+# Build the project first to ensure everything is compiled
+echo "      Building project..."
+mvn compile -Dcheckstyle.skip=true -q
 
+# Check if instrumented Java is available
+INSTRUMENTED_JAVA="target/galette/java"
+if [ ! -x "$INSTRUMENTED_JAVA/bin/java" ]; then
+    echo "ERROR: Instrumented Java not found. Building it now..."
+    mvn process-test-resources -Dcheckstyle.skip=true -q
+fi
+
+# Resolve Galette agent
+GALETTE_AGENT=""
+if [ -f "../galette-agent/target/galette-agent-1.0.0-SNAPSHOT.jar" ]; then
+    GALETTE_AGENT="../galette-agent/target/galette-agent-1.0.0-SNAPSHOT.jar"
+elif [ -f "$HOME/.m2/repository/edu/neu/ccs/prl/galette/galette-agent/1.0.0-SNAPSHOT/galette-agent-1.0.0-SNAPSHOT.jar" ]; then
+    GALETTE_AGENT="$HOME/.m2/repository/edu/neu/ccs/prl/galette/galette-agent/1.0.0-SNAPSHOT/galette-agent-1.0.0-SNAPSHOT.jar"
+else
+    echo "ERROR: Galette agent jar not found"
+    exit 1
+fi
+
+# Build classpath
+mvn -q -DincludeScope=runtime -Dmdep.outputFile=cp.txt dependency:build-classpath
+CP="target/classes:target/test-classes:$(cat cp.txt)"
+
+echo "      Using instrumented JVM with Galette agent"
 set +e
-mvn exec:java -Dexec.mainClass="$MAIN_CLASS" -Dcheckstyle.skip=true
+"$INSTRUMENTED_JAVA/bin/java" \
+    -cp "$CP" \
+    -Xbootclasspath/a:"$GALETTE_AGENT" \
+    -javaagent:"$GALETTE_AGENT" \
+    -Dgalette.cache=target/galette/cache \
+    -Dpath.explorer.max.iterations=6 \
+    "$MAIN_CLASS"
 MVN_EXIT=$?
 set -e
 

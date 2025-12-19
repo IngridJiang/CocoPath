@@ -316,6 +316,10 @@ public class SymbolicComparison {
      * Handle a symbolic choice for use directly in Vitruvius reactions.
      * This version takes an Integer (boxed) to work with Vitruvius user interaction results.
      *
+     * In the new design:
+     * - Domain constraints are handled by GaletteSymbolicator.getOrMakeSymbolicInt
+     * - This method only records the specific choice constraint
+     *
      * @param selected The selected choice (can be null if dialog cancelled)
      * @param min Minimum valid choice
      * @param max Maximum valid choice
@@ -340,20 +344,29 @@ public class SymbolicComparison {
                 System.out.println("[SymbolicComparison:symbolicVitruviusChoice]   - Tag found: " + tag);
                 System.out.println("[SymbolicComparison:symbolicVitruviusChoice]   - Tag labels: "
                         + java.util.Arrays.toString(tag.getLabels()));
+
+                // Extract qualified name from tag label
+                String qualifiedName = tag.getLabels()[0].toString();
+
+                // Record ONLY the switch constraint (domain already handled elsewhere)
+                PathUtils.addSwitchConstraint(qualifiedName, selected);
+
+                System.out.println("[SymbolicComparison:symbolicVitruviusChoice]   - Recorded switch constraint: "
+                        + qualifiedName + " == " + selected);
             } else {
                 System.out.println(
                         "[SymbolicComparison:symbolicVitruviusChoice]   - No tag or empty tag on Integer value");
+                // Fallback: use generic variable name
+                // PathUtils.addSwitchConstraint("user_choice", selected);
             }
         } catch (Exception e) {
             System.out.println("[SymbolicComparison:symbolicVitruviusChoice]   - Exception getting tag: "
                     + e.getClass().getName() + ": " + e.getMessage());
-            // No tag available, will fall back to concrete handling
+            // Fallback to concrete handling
+            // PathUtils.addSwitchConstraint("user_choice", selected);
         }
 
-        System.out.println("[SymbolicComparison:symbolicVitruviusChoice]   - Delegating to symbolicChoice...");
-        int result = symbolicChoice(selected.intValue(), tag, min, max);
-        System.out.println(
-                "[SymbolicComparison:symbolicVitruviusChoice]   - symbolicVitruviusChoice returning: " + result);
-        return result;
+        System.out.println("[SymbolicComparison:symbolicVitruviusChoice]   - Returning: " + selected);
+        return selected;
     }
 }

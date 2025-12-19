@@ -9,21 +9,33 @@ import tools.vitruv.dsls.reactions.runtime.state.ReactionExecutionState;
 import tools.vitruv.dsls.reactions.runtime.structure.ReactionsImportPath;
 
 @SuppressWarnings("all")
-public class Amalthea2ascetChangePropagationSpecification extends AbstractReactionsChangePropagationSpecification implements ChangePropagationSpecification {
-  public Amalthea2ascetChangePropagationSpecification() {
-    super(MetamodelDescriptor.with(Set.of("http://vitruv.tools/reactionsparser/model2")), 
-    	MetamodelDescriptor.with(Set.of("http://vitruv.tools/reactionsparser/model")));
-  }
+public class Amalthea2ascetChangePropagationSpecification extends AbstractReactionsChangePropagationSpecification
+        implements ChangePropagationSpecification {
+    public Amalthea2ascetChangePropagationSpecification() {
+        super(
+                MetamodelDescriptor.with(Set.of("http://vitruv.tools/reactionsparser/model2")),
+                MetamodelDescriptor.with(Set.of("http://vitruv.tools/reactionsparser/model")));
+    }
 
-  protected RoutinesFacadesProvider createRoutinesFacadesProvider(final ReactionExecutionState executionState) {
-    return new mir.routines.amalthea2ascet.Amalthea2ascetRoutinesFacadesProvider(executionState);
-  }
+    protected RoutinesFacadesProvider createRoutinesFacadesProvider(final ReactionExecutionState executionState) {
+        return new mir.routines.amalthea2ascet.Amalthea2ascetRoutinesFacadesProvider(executionState);
+    }
 
-  protected void setup() {
-    org.eclipse.emf.ecore.EPackage.Registry.INSTANCE.putIfAbsent(tools.vitruv.methodologisttemplate.model.model2.impl.Model2PackageImpl.eNS_URI, tools.vitruv.methodologisttemplate.model.model2.impl.Model2PackageImpl.eINSTANCE);
-    org.eclipse.emf.ecore.EPackage.Registry.INSTANCE.putIfAbsent(tools.vitruv.methodologisttemplate.model.model.impl.ModelPackageImpl.eNS_URI, tools.vitruv.methodologisttemplate.model.model.impl.ModelPackageImpl.eINSTANCE);
-    addReaction(new mir.reactions.amalthea2ascet.ComponentContainerInsertedAsRootReaction((executionState) -> createRoutinesFacadesProvider(executionState).getRoutinesFacade(ReactionsImportPath.fromPathString("amalthea2ascet"))));
-    addReaction(new mir.reactions.amalthea2ascet.TaskDeletedReaction((executionState) -> createRoutinesFacadesProvider(executionState).getRoutinesFacade(ReactionsImportPath.fromPathString("amalthea2ascet"))));
-    addReaction(new mir.reactions.amalthea2ascet.TaskCreatedReaction((executionState) -> createRoutinesFacadesProvider(executionState).getRoutinesFacade(ReactionsImportPath.fromPathString("amalthea2ascet"))));
-  }
+    protected void setup() {
+        org.eclipse.emf.ecore.EPackage.Registry.INSTANCE.putIfAbsent(
+                tools.vitruv.methodologisttemplate.model.model2.impl.Model2PackageImpl.eNS_URI,
+                tools.vitruv.methodologisttemplate.model.model2.impl.Model2PackageImpl.eINSTANCE);
+        org.eclipse.emf.ecore.EPackage.Registry.INSTANCE.putIfAbsent(
+                tools.vitruv.methodologisttemplate.model.model.impl.ModelPackageImpl.eNS_URI,
+                tools.vitruv.methodologisttemplate.model.model.impl.ModelPackageImpl.eINSTANCE);
+        addReaction(new mir.reactions.amalthea2ascet.ComponentContainerInsertedAsRootReaction(
+                (executionState) -> createRoutinesFacadesProvider(executionState)
+                        .getRoutinesFacade(ReactionsImportPath.fromPathString("amalthea2ascet"))));
+        addReaction(new mir.reactions.amalthea2ascet.TaskDeletedReaction(
+                (executionState) -> createRoutinesFacadesProvider(executionState)
+                        .getRoutinesFacade(ReactionsImportPath.fromPathString("amalthea2ascet"))));
+        addReaction(new mir.reactions.amalthea2ascet.TaskCreatedReaction(
+                (executionState) -> createRoutinesFacadesProvider(executionState)
+                        .getRoutinesFacade(ReactionsImportPath.fromPathString("amalthea2ascet"))));
+    }
 }

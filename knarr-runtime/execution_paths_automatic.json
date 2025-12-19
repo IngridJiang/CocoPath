@@ -5,63 +5,9 @@
       "user_choice": 0
     },
     "constraints": [
-      "(0<=user_choice)&&(user_choice<5)",
-      "(0<=user_choice)&&(user_choice<5)",
-      "user_choice==0",
-      "user_choice==0"
+      "(0<=CreateAscetTaskRoutine:execute:userChoice)&&(CreateAscetTaskRoutine:execute:userChoice<5)",
+      "CreateAscetTaskRoutine:execute:userChoice==0"
     ],
-    "executionTime": 1016
-  },
-  {
-    "pathId": 2,
-    "symbolicInputs": {
-      "user_choice": 1
-    },
-    "constraints": [
-      "(0<=user_choice)&&(user_choice<5)",
-      "(0<=user_choice)&&(user_choice<5)",
-      "user_choice==1",
-      "user_choice==1"
-    ],
-    "executionTime": 38
-  },
-  {
-    "pathId": 3,
-    "symbolicInputs": {
-      "user_choice": 2
-    },
-    "constraints": [
-      "(0<=user_choice)&&(user_choice<5)",
-      "(0<=user_choice)&&(user_choice<5)",
-      "user_choice==2",
-      "user_choice==2"
-    ],
-    "executionTime": 34
-  },
-  {
-    "pathId": 4,
-    "symbolicInputs": {
-      "user_choice": 3
-    },
-    "constraints": [
-      "(0<=user_choice)&&(user_choice<5)",
-      "(0<=user_choice)&&(user_choice<5)",
-      "user_choice==3",
-      "user_choice==3"
-    ],
-    "executionTime": 28
-  },
-  {
-    "pathId": 5,
-    "symbolicInputs": {
-      "user_choice": 4
-    },
-    "constraints": [
-      "(0<=user_choice)&&(user_choice<5)",
-      "(0<=user_choice)&&(user_choice<5)",
-      "user_choice==4",
-      "user_choice==4"
-    ],
-    "executionTime": 22
+    "executionTime": 24267
   }
 ]
