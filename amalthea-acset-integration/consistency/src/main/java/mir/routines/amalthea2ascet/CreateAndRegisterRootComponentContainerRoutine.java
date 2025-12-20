@@ -9,10 +9,6 @@ import tools.vitruv.dsls.reactions.runtime.structure.CallHierarchyHaving;
 import tools.vitruv.methodologisttemplate.model.model.AscetModule;
 import tools.vitruv.methodologisttemplate.model.model2.ComponentContainer;
 
-/**
- * Generated Java Code from Reactions DSL.
- *
- */
 @SuppressWarnings("all")
 public class CreateAndRegisterRootComponentContainerRoutine extends AbstractRoutine {
     private CreateAndRegisterRootComponentContainerRoutine.InputValues inputValues;

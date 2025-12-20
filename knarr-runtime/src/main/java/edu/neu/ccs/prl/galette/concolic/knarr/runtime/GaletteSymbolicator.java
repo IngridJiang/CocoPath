@@ -2,6 +2,7 @@ package edu.neu.ccs.prl.galette.concolic.knarr.runtime;
 
 import edu.neu.ccs.prl.galette.concolic.knarr.green.GaletteGreenBridge;
 import edu.neu.ccs.prl.galette.internal.runtime.Tag;
+import edu.neu.ccs.prl.galette.internal.runtime.Tainter;
 import java.io.*;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -43,7 +44,7 @@ public class GaletteSymbolicator {
     /**
      * Debug flag.
      */
-    public static final boolean DEBUG = Boolean.valueOf(System.getProperty("DEBUG", "false"));
+    public static final boolean DEBUG = true; // Boolean.valueOf(System.getProperty("DEBUG", "false"));
 
     /**
      * Internal class name for bytecode instrumentation.
@@ -64,6 +65,18 @@ public class GaletteSymbolicator {
      * Map from tags to their Green expressions.
      */
     private static final ConcurrentHashMap<Tag, Expression> tagToExpression = new ConcurrentHashMap<>();
+
+    /**
+     * Map from qualified labels to tags for reuse across iterations.
+     * This enables the same symbolic variable to be used across different path explorations.
+     * Format: ClassName:MethodName:variableName
+     *
+     * ASSUMPTIONS:
+     * 1. No nested blocks with same variable names within a method
+     * 2. Each UserInteraction called at most once per path iteration
+     * 3. Qualified names uniquely identify symbolic input points
+     */
+    private static final ConcurrentHashMap<String, Tag> labelToTag = new ConcurrentHashMap<>();
 
     static {
         initializeSymbolicator();
@@ -120,6 +133,95 @@ public class GaletteSymbolicator {
         } catch (Exception e) {
             System.err.println("Error creating symbolic int: " + e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Get or create a symbolic integer value with tag reuse.
+     *
+     * This method supports tag reuse across path iterations by using qualified names.
+     * On first encounter, it creates a new tag and records domain constraints.
+     * On subsequent encounters, it reuses the existing tag but updates value mapping.
+     *
+     * @param qualifiedName Fully qualified name (ClassName:MethodName:variableName)
+     * @param concreteValue The concrete value for this iteration
+     * @param min Minimum value in domain (inclusive)
+     * @param max Maximum value in domain (inclusive)
+     * @return Tagged integer value ready for use
+     */
+    public static Integer getOrMakeSymbolicInt(String qualifiedName, int concreteValue, int min, int max) {
+        if (qualifiedName == null || qualifiedName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Qualified name cannot be null or empty");
+        }
+
+        try {
+            // Check if tag already exists for this qualified name
+            Tag existingTag = labelToTag.get(qualifiedName);
+
+            if (existingTag != null) {
+                // Reuse existing tag for this iteration
+                // Update value mapping for this concrete value
+                valueToTag.put(concreteValue, existingTag);
+
+                if (DEBUG) {
+                    System.out.println("[GaletteSymbolicator:getOrMakeSymbolicInt] Reusing tag for: " + qualifiedName
+                            + " = " + concreteValue);
+                }
+
+                // Domain constraint already recorded in first iteration
+                // Apply the tag to the value and return
+                Integer taggedValue = Tainter.setTag(concreteValue, existingTag);
+
+                // Debug: Verify the tag was actually applied
+                Tag verifyTag = Tainter.getTag(taggedValue);
+                if (verifyTag == null) {
+                    System.err.println(
+                            "[GaletteSymbolicator:getOrMakeSymbolicInt] WARNING: Reused tag was not applied!");
+                    System.err.println("  Instrumentation may not be working. Check that Galette agent is loaded.");
+                } else {
+                    if (DEBUG) {
+                        System.out.println("[GaletteSymbolicator:getOrMakeSymbolicInt] Verified reused tag applied: "
+                                + verifyTag.getLabels()[0]);
+                    }
+                }
+
+                return taggedValue;
+            }
+
+            // First iteration - create new tag
+            Tag newTag = makeSymbolicInt(qualifiedName, concreteValue);
+            if (newTag == null) {
+                return concreteValue; // Return untagged value on error
+            }
+
+            // Store for reuse in future iterations
+            labelToTag.put(qualifiedName, newTag);
+
+            // Record domain constraint [min, max] (only on first iteration)
+            // Note: PathUtils.addIntDomainConstraint uses exclusive upper bound
+            PathUtils.addIntDomainConstraint(qualifiedName, min, max + 1);
+
+            if (DEBUG) {
+                System.out.println("[GaletteSymbolicator:getOrMakeSymbolicInt] Created new tag for: " + qualifiedName
+                        + " = " + concreteValue + ", domain: [" + min + ", " + max + "]");
+            }
+
+            // Apply the tag to the value and return
+            Integer taggedValue = Tainter.setTag(concreteValue, newTag);
+
+            // Debug: Verify the tag was actually applied
+            Tag verifyTag = Tainter.getTag(taggedValue);
+            if (verifyTag == null) {
+                System.err.println("[GaletteSymbolicator:getOrMakeSymbolicInt] WARNING: New tag was not applied!");
+                System.err.println("  Instrumentation may not be working. Check that Galette agent is loaded.");
+            }
+
+            return taggedValue;
+
+        } catch (Exception e) {
+            System.err.println("[GaletteSymbolicator:getOrMakeSymbolicInt] Error: " + e.getMessage());
+            e.printStackTrace();
+            return concreteValue; // Return untagged value on error
         }
     }
 
@@ -559,6 +661,7 @@ public class GaletteSymbolicator {
     public static void reset() {
         valueToTag.clear();
         tagToExpression.clear();
+        labelToTag.clear(); // Clear label-to-tag mappings for tag reuse
         mySoln = null;
         GaletteGreenBridge.clearVariableCache();
         PathUtils.reset();

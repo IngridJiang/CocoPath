@@ -8,10 +8,6 @@ import tools.vitruv.dsls.reactions.runtime.state.ReactionExecutionState;
 import tools.vitruv.dsls.reactions.runtime.structure.CallHierarchyHaving;
 import tools.vitruv.methodologisttemplate.model.model2.Task;
 
-/**
- * Generated Java Code from Reactions DSL.
- *
- */
 @SuppressWarnings("all")
 public class DeleteTaskRoutine extends AbstractRoutine {
     private DeleteTaskRoutine.InputValues inputValues;

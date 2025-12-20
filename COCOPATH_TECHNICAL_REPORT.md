@@ -119,20 +119,20 @@ CocoPath is a **concolic execution framework** for systematically exploring exec
 ```
 INPUT: Initial value (e.g., user_choice = 0)
    ↓
-[PathExplorer creates tagged Integer with label]
-   Tag stores: variable name + symbolic expression
+[PathExplorer passes concrete value to executor]
+   No tagging at this level
    ↓
-[Tagged value passed to execution wrapper]
+[Vitruvius reaction receives concrete value]
    ↓
-[Execution wrapper reads tag] ← NEW: Tag Reading Step
-   Extracts: varName = tag.getLabels()[0]
-   Extracts: symbolicExpr = GaletteSymbolicator.getExpressionForTag(tag)
+[Reaction calls GaletteSymbolicator.getOrMakeSymbolicInt]
+   Creates tag with qualified name: "CreateAscetTaskRoutine:execute:userChoice"
+   Reuses tag on subsequent iterations
+   Adds domain constraint automatically
    ↓
-[Tag propagates through execution via Galette shadow stack]
+[Tagged value used in reaction]
    ↓
-[Constraints collected using tag-derived variable name]
-   PathUtils.addIntDomainConstraint(varName, 0, 5)  ← Uses extracted varName
-   PathUtils.addSwitchConstraint(varName, concreteValue)
+[Reaction calls SymbolicComparison.symbolicVitruviusChoice]
+   Records switch constraint with qualified name from tag
    ↓
 [PathConditionWrapper stores constraints]
    ↓
@@ -775,7 +775,8 @@ For path (i, j):
 **Collection Timeline** (per execution):
 ```
 T0: PathExplorer creates Map<String,Object> inputs
-      {user_choice_1: taggedInt₁, user_choice_2: taggedInt₂}
+      {user_choice_1: concreteInt₁, user_choice_2: concreteInt₂}
+      (No tagging - reactions handle it)
 
 T1: Reset PathConditionWrapper
 

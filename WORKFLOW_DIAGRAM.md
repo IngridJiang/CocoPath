@@ -20,13 +20,14 @@
 │ │    ├─ Create PathExplorer                                            │   │
 │ │    └─ Call exploreInteger()                                          │   │
 │ │                                                                       │   │
-│ │  executeVitruvWithInput(testInstance, taggedInteger)                 │   │
-│ │    ├─ [T3] PathUtils.addIntDomainConstraint("user_choice", 0, 5)    │   │
-│ │    │        → PC = [(0 <= user_choice < 5)]                          │   │
-│ │    ├─ [T4] insertTask.invoke(testInstance, workDir, taggedInteger)  │   │
-│ │    ├─ [T5] PathUtils.addSwitchConstraint("user_choice", value)      │   │
-│ │    │        → PC += [user_choice == N]                               │   │
-│ │    └─ [T6] return PathUtils.getCurPC()                              │   │
+│ │  executeVitruvWithInput(testInstance, concreteInteger)               │   │
+│ │    ├─ [T3] insertTask.invoke(testInstance, workDir, concreteInteger)│   │
+│ │    │        → Triggers Vitruvius reaction                           │   │
+│ │    │        → Reaction calls GaletteSymbolicator.getOrMakeSymbolicInt│   │
+│ │    │        → Creates/reuses tag + adds domain constraint           │   │
+│ │    │        → Reaction calls SymbolicComparison.symbolicVitruviusChoice│ │
+│ │    │        → Records switch constraint                              │   │
+│ │    └─ [T4] return PathUtils.getCurPC()                              │   │
 │ └──────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
 │ ┌──────────────────────────────────────────────────────────────────────┐   │
@@ -36,16 +37,15 @@
 │ │    │                                                                  │   │
 │ │    ├─ LOOP: while (hasUnexploredPaths && iteration < MAX)           │   │
 │ │    │   │                                                             │   │
-│ │    │   ├─ [T0] Create tagged Integer                                │   │
-│ │    │   │        GaletteSymbolicator.tagInteger(value, varName)      │   │
-│ │    │   │        → Tagged(concrete=N, symbolic=α, label=varName)     │   │
+│ │    │   ├─ [T0] Pass concrete value to executor                      │   │
+│ │    │   │        (No tagging - reactions handle it)                  │   │
 │ │    │   │                                                             │   │
-│ │    │   ├─ [T1] Reset PC: PathUtils.getCurPC().clear()              │   │
+│ │    │   ├─ [T1] Reset PC: PathUtils.resetPC()                       │   │
 │ │    │   │                                                             │   │
-│ │    │   ├─ [T2-T6] Execute: executor(taggedInteger)                 │   │
+│ │    │   ├─ [T2-T4] Execute: executor(concreteInteger)               │   │
 │ │    │   │        → Returns PathConditionWrapper                      │   │
 │ │    │   │                                                             │   │
-│ │    │   ├─ [T7] Store PathRecord {inputs, constraints, time}        │   │
+│ │    │   ├─ [T5] Store PathRecord {inputs, constraints, time}        │   │
 │ │    │   │                                                             │   │
 │ │    │   ├─ Find unexplored constraint to negate                      │   │
 │ │    │   │                                                             │   │
@@ -101,12 +101,14 @@
 ┌──────────────────────────────────────▼──────────────────────────────────────┐
 │                       TAG PROPAGATION LAYER (Galette)                        │
 │ ┌──────────────────────────────────────────────────────────────────────┐   │
-│ │  GaletteSymbolicator.java                                            │   │
+│ │  GaletteSymbolicator.java (Called from Reactions)                   │   │
 │ │                                                                       │   │
-│ │  tagInteger(int value, String label)                                │   │
-│ │    ├─ Create Tag(label, IntVariable(label))                         │   │
-│ │    ├─ Associate tag with Integer object                             │   │
-│ │    └─ return Tagged Integer                                         │   │
+│ │  getOrMakeSymbolicInt(qualifiedName, value, min, max)               │   │
+│ │    ├─ Check labelToTag map for existing tag                         │   │
+│ │    ├─ If exists: reuse tag (tag reuse across iterations)           │   │
+│ │    ├─ If new: create Tag + IntVariable + domain constraint         │   │
+│ │    ├─ Apply tag with Tainter.setTag(value, tag)                    │   │
+│ │    └─ Return tagged integer                                         │   │
 │ └──────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
 │ ┌──────────────────────────────────────────────────────────────────────┐   │
@@ -265,13 +267,37 @@ START: PathExplorer.exploreInteger("user_choice", 0, executor)
 END: Return List<PathRecord> with 5 paths
 ```
 
-## 3. Constraint Collection Timeline (Single Iteration)
+## 3. Vitruvius Reaction Flow (NEW - Tag Creation in Reactions)
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                     Vitruvius Reaction Execution                         │
+│                                                                          │
+│  1. UserInteraction.startInteraction() returns concrete value           │
+│       ↓                                                                 │
+│  2. Reaction calls GaletteSymbolicator.getOrMakeSymbolicInt()          │
+│       - qualifiedName: "CreateAscetTaskRoutine:execute:userChoice"      │
+│       - Creates tag on first iteration                                  │
+│       - Reuses tag on subsequent iterations                            │
+│       - Adds domain constraint [min, max]                              │
+│       ↓                                                                 │
+│  3. Tagged value returned to reaction                                   │
+│       ↓                                                                 │
+│  4. Reaction calls SymbolicComparison.symbolicVitruviusChoice()        │
+│       - Records switch constraint for specific choice                   │
+│       - Uses qualified name from tag                                    │
+│       ↓                                                                 │
+│  5. Reaction executes appropriate transformation                        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+## 4. Constraint Collection Timeline (Single Iteration)
 
 ```
 Time  Event                          Location                           PC State
 ─────────────────────────────────────────────────────────────────────────────────────
-T0    Create tagged Integer          PathExplorer:69                    []
-      GaletteSymbolicator.tagInteger(0, "user_choice")
+T0    Pass concrete value           PathExplorer:69                    []
+      executor.execute(0)  (no tagging yet)
 
 T1    Reset PC                       PathExplorer:71                    []
       PathUtils.getCurPC().clear()

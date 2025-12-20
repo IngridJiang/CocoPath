@@ -8,10 +8,6 @@ import tools.vitruv.dsls.reactions.runtime.routines.RoutinesFacadesProvider;
 import tools.vitruv.dsls.reactions.runtime.state.ReactionExecutionState;
 import tools.vitruv.dsls.reactions.runtime.structure.ReactionsImportPath;
 
-/**
- * Generated Java Code from Reactions DSL.
- *
- */
 @SuppressWarnings("all")
 public class Amalthea2ascetChangePropagationSpecification extends AbstractReactionsChangePropagationSpecification
         implements ChangePropagationSpecification {

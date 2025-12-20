@@ -8,10 +8,6 @@ import tools.vitruv.dsls.reactions.runtime.structure.ReactionsImportPath;
 import tools.vitruv.methodologisttemplate.model.model2.ComponentContainer;
 import tools.vitruv.methodologisttemplate.model.model2.Task;
 
-/**
- * Generated Java Code from Reactions DSL.
- *
- */
 @SuppressWarnings("all")
 public class Amalthea2ascetRoutinesFacade extends AbstractRoutinesFacade {
     public Amalthea2ascetRoutinesFacade(
@@ -45,12 +41,12 @@ public class Amalthea2ascetRoutinesFacade extends AbstractRoutinesFacade {
         return routine.execute();
     }
 
-    public boolean createInterruptTask(final Task task, final ComponentContainer container) {
+    public boolean createInitTask(final Task task, final ComponentContainer container) {
         Amalthea2ascetRoutinesFacade _routinesFacade = this;
         ReactionExecutionState _executionState = _getExecutionState();
         CallHierarchyHaving _caller = this._getCurrentCaller();
-        CreateInterruptTaskRoutine routine =
-                new CreateInterruptTaskRoutine(_routinesFacade, _executionState, _caller, task, container);
+        CreateInitTaskRoutine routine =
+                new CreateInitTaskRoutine(_routinesFacade, _executionState, _caller, task, container);
         return routine.execute();
     }
 

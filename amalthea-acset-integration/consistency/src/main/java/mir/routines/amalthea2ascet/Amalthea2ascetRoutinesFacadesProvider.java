@@ -5,10 +5,6 @@ import tools.vitruv.dsls.reactions.runtime.routines.AbstractRoutinesFacadesProvi
 import tools.vitruv.dsls.reactions.runtime.state.ReactionExecutionState;
 import tools.vitruv.dsls.reactions.runtime.structure.ReactionsImportPath;
 
-/**
- * Generated Java Code from Reactions DSL.
- *
- */
 @SuppressWarnings("all")
 public class Amalthea2ascetRoutinesFacadesProvider extends AbstractRoutinesFacadesProvider {
     public Amalthea2ascetRoutinesFacadesProvider(final ReactionExecutionState executionState) {

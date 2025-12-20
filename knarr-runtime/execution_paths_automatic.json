@@ -2,56 +2,57 @@
   {
     "pathId": 1,
     "symbolicInputs": {
-      "user_choice": 0
+      "null": 0
     },
-    "constraints": [
-      "(0<=user_choice)&&(user_choice<5)",
-      "user_choice==0"
+    "pathConstraints": [
+      "(0<=CreateAscetTaskRoutine:execute:userChoice_forTask_specialname)&&(CreateAscetTaskRoutine:execute:userChoice_forTask_specialname<5)",
+      "CreateAscetTaskRoutine:execute:userChoice_forTask_specialname==0"
     ],
-    "executionTime": 1381
+    "numConstraints": 2,
+    "executionTimeMs": 23810
   },
   {
     "pathId": 2,
     "symbolicInputs": {
-      "user_choice": 1
+      "null": 1
     },
-    "constraints": [
-      "(0<=user_choice)&&(user_choice<5)",
-      "user_choice==1"
+    "pathConstraints": [
+      "CreateAscetTaskRoutine:execute:userChoice_forTask_specialname==1"
     ],
-    "executionTime": 46
+    "numConstraints": 1,
+    "executionTimeMs": 144
   },
   {
     "pathId": 3,
     "symbolicInputs": {
-      "user_choice": 2
+      "null": 2
     },
-    "constraints": [
-      "(0<=user_choice)&&(user_choice<5)",
-      "user_choice==2"
+    "pathConstraints": [
+      "CreateAscetTaskRoutine:execute:userChoice_forTask_specialname==2"
     ],
-    "executionTime": 30
+    "numConstraints": 1,
+    "executionTimeMs": 162
   },
   {
     "pathId": 4,
     "symbolicInputs": {
-      "user_choice": 3
+      "null": 3
     },
-    "constraints": [
-      "(0<=user_choice)&&(user_choice<5)",
-      "user_choice==3"
+    "pathConstraints": [
+      "CreateAscetTaskRoutine:execute:userChoice_forTask_specialname==3"
     ],
-    "executionTime": 29
+    "numConstraints": 1,
+    "executionTimeMs": 165
   },
   {
     "pathId": 5,
     "symbolicInputs": {
-      "user_choice": 4
+      "null": 4
     },
-    "constraints": [
-      "(0<=user_choice)&&(user_choice<5)",
-      "user_choice==4"
+    "pathConstraints": [
+      "CreateAscetTaskRoutine:execute:userChoice_forTask_specialname==4"
     ],
-    "executionTime": 24
+    "numConstraints": 1,
+    "executionTimeMs": 87
   }
 ]

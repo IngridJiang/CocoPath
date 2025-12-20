@@ -11,10 +11,6 @@ import tools.vitruv.dsls.reactions.runtime.routines.RoutinesFacade;
 import tools.vitruv.dsls.reactions.runtime.state.ReactionExecutionState;
 import tools.vitruv.methodologisttemplate.model.model2.Task;
 
-/**
- * Generated Java Code from Reactions DSL.
- *
- */
 @SuppressWarnings("all")
 public class TaskDeletedReaction extends AbstractReaction {
     private DeleteEObject<Task> deleteChange;

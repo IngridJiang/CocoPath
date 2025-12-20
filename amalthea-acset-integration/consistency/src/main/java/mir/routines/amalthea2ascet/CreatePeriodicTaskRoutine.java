@@ -12,10 +12,6 @@ import tools.vitruv.methodologisttemplate.model.model.PeriodicTask;
 import tools.vitruv.methodologisttemplate.model.model2.ComponentContainer;
 import tools.vitruv.methodologisttemplate.model.model2.Task;
 
-/**
- * Generated Java Code from Reactions DSL.
- *
- */
 @SuppressWarnings("all")
 public class CreatePeriodicTaskRoutine extends AbstractRoutine {
     private CreatePeriodicTaskRoutine.InputValues inputValues;
@@ -116,6 +112,8 @@ public class CreatePeriodicTaskRoutine extends AbstractRoutine {
             EList<tools.vitruv.methodologisttemplate.model.model.Task> _tasks = AscetModule.getTasks();
             _tasks.add(periodicTask);
             periodicTask.setName(task.getName());
+            periodicTask.setDelay(0.10);
+            periodicTask.setPeriod(1.0);
             this.addCorrespondenceBetween(periodicTask, container);
         }
     }

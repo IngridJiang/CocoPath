@@ -59,18 +59,22 @@
         <!-- This requires external Amalthea-acset to be built once for Vitruvius dependencies -->
         <dependency>
             <groupId>edu.neu.ccs.prl.galette</groupId>
+            <artifactId>amalthea-acset-consistency</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>edu.neu.ccs.prl.galette</groupId>
             <artifactId>amalthea-acset-vsum</artifactId>
             <version>${project.version}</version>
         </dependency>
 
         <!-- Option 2 (CURRENT): Use external Amathea-acset repository (FULL VITRUVIUS) -->
         <!-- This provides complete Vitruvius reactions and transformations -->
-        <!--        <dependency>
+        <dependency>
             <groupId>tools.vitruv</groupId>
             <artifactId>tools.vitruv.methodologisttemplate.vsum</artifactId>
             <version>0.1.0-SNAPSHOT</version>
         </dependency>
-        -->
 
         <!-- Vitruvius framework dependencies (required for either option) -->
         <dependency>

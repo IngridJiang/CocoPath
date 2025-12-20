@@ -34,11 +34,12 @@ This framework provides **concolic execution** (combined concrete + symbolic exe
 - **Location**: `knarr-runtime/src/main/java/edu/neu/ccs/prl/galette/concolic/knarr/runtime/`
 - **Key Classes**:
   - `GaletteSymbolicator` - Creates symbolic values with tags
-  - `PathUtils` - Manual constraint collection API
-    - `addIntDomainConstraint(varName, min, max)` - manually Define valid value ranges
-    - `addSwitchConstraint(varName, value)` - Record executed path for switch case
-    - `getCurPC()` - Retrieve current path condition
+    - `getOrMakeSymbolicInt(qualifiedName, value, min, max)` - Create or reuse tag with domain constraint
+    - Tag reuse across iterations using qualified names (e.g., "CreateAscetTaskRoutine:execute:userChoice")
+  - `SymbolicComparison` - Records switch constraints from reactions
+    - `symbolicVitruviusChoice(selected, min, max)` - Records the actual choice made
   - `PathExplorer` - Automatic path exploration orchestration
+  - `PathUtils` - Retrieves current path condition (`getCurPC()`)
   - `ConstraintSolver` - Negates and solves constraints using GREEN/Z3
 
 #### GreenSolver
@@ -159,6 +160,43 @@ amalthea-acset-integration/                    # Vitruvius example
 2. **Maven 3.6+**
 3. **Python 3.x** (for dependency switching)
 
+
+### Helper Classes
+
+- **`AutomaticVitruvPathExplorationHelper`** - Shared utilities for path exploration
+  - `verifyInstrumentation()` - Checks that Galette instrumentation is working
+  - `initializeEMF()` - Initializes EMF resource factories
+  - `loadVitruviusTestClass()` - Loads the Vitruvius Test class
+  - `createWorkingDirectory()` - Creates output directories
+  - `exportSingleVarResults()` - Exports single-variable exploration results
+  - `exportMultiVarResults()` - Exports multi-variable exploration results
+
+### Syncing Generated Reactions (After Upstream Changes)
+
+When the upstream Amalthea-acset project changes (e.g., renaming InterruptTask to InitTask), you need to sync the generated reactions code:
+
+```bash
+# 1. Build external Amalthea-acset to generate new reactions
+cd /path/to/Amalthea-acset
+mvn clean generate-sources
+
+# 2. Copy generated reactions to internal project
+cd knarr-runtime
+./copy-generated-reactions.sh
+
+# Or with custom paths:
+./copy-generated-reactions.sh --external-path /path/to/Amalthea-acset
+
+# 3. Build internal project with updated reactions
+cd ../amalthea-acset-integration
+mvn clean compile -Dcheckstyle.skip=true
+```
+
+The `copy-generated-reactions.sh` script:
+- Copies generated reactions from `Amalthea-acset/consistency/target/generated-sources/reactions/mir/`
+- To `amalthea-acset-integration/consistency/src/main/java/mir/`
+- Creates backups of existing files
+- Supports custom paths with `--external-path` and `--internal-path` flags
 
 ### Quick Start
 

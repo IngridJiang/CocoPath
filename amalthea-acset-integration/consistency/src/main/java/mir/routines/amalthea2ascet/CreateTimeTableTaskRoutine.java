@@ -12,10 +12,6 @@ import tools.vitruv.methodologisttemplate.model.model.TimeTableTask;
 import tools.vitruv.methodologisttemplate.model.model2.ComponentContainer;
 import tools.vitruv.methodologisttemplate.model.model2.Task;
 
-/**
- * Generated Java Code from Reactions DSL.
- *
- */
 @SuppressWarnings("all")
 public class CreateTimeTableTaskRoutine extends AbstractRoutine {
     private CreateTimeTableTaskRoutine.InputValues inputValues;
