@@ -1,215 +1,110 @@
-# CocoPath - Concolic Exploration of Consistency-Preserving Paths
+# CoCoPath - Concolic Exploration of Consistency-Preserving Paths
 
 ## Overview
 
-A concolic method that systematically explores different CPR-triggered transformation paths, each of which preserves consistency.
+CoCoPath is a concolic execution framework for systematically exploring execution paths in consistency-preserving model transformations. By combining dynamic taint tracking, concolic execution, and model transformation frameworks, CoCoPath enables automatic path exploration to derive potential target models based on source models, consistency preservation rules (CPRs), and optional domain constraints.
 
-This project integrates **Galette** (dynamic taint tracking for JVM), **Knarr** (symbolic execution engine), **GreenSolver** (constraint solver), and **Vitruvius** (model transformation framework) to enable automatic path exploration in model-driven engineering workflows.
+This project integrates:
+- **Galette** - Dynamic taint tracking for the JVM
+- **Modified Knarr Runtime** - Symbolic execution engine
+- **Z3 Solver** - SMT constraint solver (via JNI)
+- **Vitruvius Framework** - Model transformation and consistency preservation
 
-This framework provides **concolic execution** (combined concrete + symbolic execution) for model transformations using a **hybrid approach**: automatic tag propagation with manual constraint collection. It:
-
-1. **Executes transformations** with concrete input values
-2. **Tracks symbolic values** through the transformation logic
-3. **Collects path constraints** at decision points (if/switch statements)
-4. **Generates new inputs** by negating constraints
-5. **Explores all paths** automatically until complete
+The framework provides **concolic execution** (combined concrete + symbolic execution) for model transformations, enabling developers to explore the consequences of different user decisions and resolve temporary inconsistencies in an informed manner.
 
 ![CocoPath Overview Diagram](overview.png)
 
-### Key Components
+## Key Features
 
-#### Galette
-- **Purpose**: Dynamic taint tracking for JVM bytecode
-- **Role**: Attaches symbolic "tags" to values and propagates them through operations
-- **Location**: `galette-agent/`, `galette-instrument/`
+### Systematic Path Exploration
+1. **Executes transformations** with concrete input values
+2. **Tracks symbolic values** through transformation logic via dynamic taint tracking
+3. **Collects path constraints** from consistency preservation rules
+4. **Generates new inputs** by negating constraints and solving with Z3
+5. **Explores all feasible paths** automatically until complete
+
+### Architecture Components
+
+#### Galette (Dynamic Taint Tracking)
+- **Purpose**: Propagates symbolic tags through JVM bytecode execution
+- **Role**: Attaches and propagates symbolic identities alongside concrete values
 - **Key APIs**:
-  - `Tainter.setTag(value, tag)` - Attach tag to value
-  - `Tainter.getTag(value)` - Read tag from value
-  - `Tag.getLabels()` - Extract variable names from tag
-  - `GaletteSymbolicator.getExpressionForTag(tag)` - Get symbolic expression
+  - `Tainter.setTag(value, tag)` - Attach symbolic tag to value
+  - `Tainter.getTag(value)` - Retrieve tag from value
+  - Tag propagation through arithmetic, method calls, field access
 
-#### Knarr
-- **Purpose**: Symbolic execution engine
-- **Role**: Creates symbolic values and tracks path constraints
-- **Location**: `knarr-runtime/src/main/java/edu/neu/ccs/prl/galette/concolic/knarr/runtime/`
+#### Modified Knarr Runtime
+- **Purpose**: Symbolic execution and path constraint management
+- **Location**: `knarr-runtime/src/main/java/edu/neu/ccs/prl/galette/`
 - **Key Classes**:
-  - `GaletteSymbolicator` - Creates symbolic values with tags
-    - `getOrMakeSymbolicInt(qualifiedName, value, min, max)` - Create or reuse tag with domain constraint
-    - Tag reuse across iterations using qualified names (e.g., "CreateAscetTaskRoutine:execute:userChoice")
-  - `SymbolicComparison` - Records switch constraints from reactions
-    - `symbolicVitruviusChoice(selected, min, max)` - Records the actual choice made
-  - `PathExplorer` - Automatic path exploration orchestration
-  - `PathUtils` - Retrieves current path condition (`getCurPC()`)
-  - `ConstraintSolver` - Negates and solves constraints using GREEN/Z3
+  - `GaletteSymbolicator` - Creates and manages symbolic values with tag reuse
+  - `PathExplorer` - Orchestrates systematic path exploration
+  - `PathUtils` - Manages path conditions and constraints
+  - `SymbolicComparison` - Records constraints from Vitruvius reactions
+  - `Z3ConstraintSolver` - Interfaces with Z3 for constraint solving
 
-#### GreenSolver
-- **Purpose**: Constraint solving using Z3/CVC/other SMT solvers
-- **Role**: Solves path constraints to generate new test inputs
-- **Integration**: Used by `ConstraintSolver` to find satisfying assignments
-- **Dependency**: `za.ac.sun.cs:green` (Maven)
-
-#### Vitruvius Framework
-- **Purpose**: Consistency preservation for model transformations
-- **Role**: Provides real-world model transformation scenarios
-- **Example**: Amalthea ↔ ASCET model synchronization
+#### Vitruvius Integration
+- **Purpose**: Provides real-world model transformation scenarios
+- **Example**: AMALTHEA ↔ ASCET model synchronization
 - **Location**: `amalthea-acset-integration/`
+- Consistency preservation rules require user decisions that cannot be resolved automatically
 
-### Hybrid Approach: Automatic Tag Propagation + Manual Constraint Collection
+### Constraint Collection Approach
 
-CocoPath uses a **pragmatic hybrid approach** combining automatic and manual techniques:
+CoCoPath employs a **CPR-level constraint registration mechanism** that makes decision semantics explicit at the transformation logic level:
 
-#### What's Automatic (Galette)
-- **Tag Creation**: Symbolic values are created via `GaletteSymbolicator.tagInteger()`
-- **Tag Propagation**: Tags automatically flow through:
-  - Arithmetic operations (`+`, `-`, `*`, `/`, `%`)
-  - Method calls (via shadow stack)
-  - Field reads/writes
-  - Array accesses
+1. **Symbolic Variable Registration**: Vitruvius reactions call `GaletteSymbolicator.getOrMakeSymbolicInt()` to create or reuse symbolic tags
+2. **Constraint Recording**: Reactions invoke `SymbolicComparison.symbolicVitruviusChoice()` to record path constraints
+3. **Tag Reuse**: Qualified names (e.g., "CreateAscetTaskRoutine:execute:userChoice_forTask_task1") enable tag reuse across iterations
 
-#### What's Manual (PathUtils API)
-- **Domain Constraints**: Define valid value ranges for symbolic variables such as from declaritive consistency
-- **Path Constraints**: Record which branch/case was taken during execution
-
-#### Why Manual Constraint Collection?
-
-Initial attempts at fully automatic bytecode instrumentation for switch statements encountered **JVM bytecode verification errors** due to complex shadow stack management. Rather than compromise reliability, we adopted a manual constraint collection approach that prioritizes:
-
-1. **Correctness**: No bytecode verification errors
-2. **Simplicity**: Clear, understandable constraint collection points
-3. **Maintainability**: Easy to debug and extend
-4. **Pragmatism**: Works reliably for research purposes
-
-
-#### Two Types of Constraints
-
-**Domain Constraint** (limits solver search space):
-```
-0 <= user_choice < 5
-```
-**Path Constraint** (records execution):
-```
-user_choice == 0
-```
-Records that this specific execution took the first case.
-
-Together, they form the **Path Condition** for solver-based path exploration:
-```
-(0 <= user_choice < 5) AND (user_choice == 0)
-```
-
-The solver negates path constraints to generate new inputs exploring different paths.
-
-### Tag Tracking Implementation
-
-CocoPath now **actively reads and utilizes tag information** during path exploration:
-
-#### What Tags Store
-Each tag attached to a symbolic value contains:
-1. **Variable Name** (label) - e.g., "user_choice", "user_choice_1"
-2. **Symbolic Expression** (GREEN Expression object) - e.g., IntVariable, BinaryOperation
-
-#### Benefits of Tag Reading
-
-1. **Dynamic Variable Names**: Variable names are no longer hardcoded, extracted from tags at runtime
-2. **Metadata Propagation**: Tags serve as a pipeline carrying symbolic information through execution
-3. **Expression Access**: Symbolic expressions can be retrieved for advanced constraint manipulation
-4. **Debugging Support**: Tag detection messages help verify proper tag propagation
-
-#### Current Role of Tags
-
-**Active Uses:**
-- Variable name extraction 
-- Symbolic expression retrieval (for potential advanced use)
-- Runtime tag presence verification
-
-**Not Yet Used:**
-- Automatic constraint collection via bytecode instrumentation (disabled due to verification errors)
-
-**Architecture Status:**
-- Tag infrastructure is fully operational and actively utilized
-- Constraint collection remains manual but uses tag-derived metadata
-- System bridges automatic tag propagation (Galette) with manual constraint APIs (PathUtils)
+This approach prioritizes framework compatibility and reliability over full automation, avoiding bytecode verification issues while maintaining systematic path exploration capabilities.
 
 ## Project Structure
 
 ```
-knarr-runtime/
-├── src/main/java/
-│   └── edu/neu/ccs/prl/galette/
-│       ├── concolic/knarr/runtime/
-│       │   ├── GaletteSymbolicator.java      # Creates symbolic values
-│       │   ├── PathUtils.java                # Collects path constraints
-│       │   ├── PathExplorer.java             # Automatic path exploration
-│       │   └── ConstraintSolver.java         # Constraint negation & solving
-│       └── vitruvius/
-│           └── AutomaticVitruvPathExploration.java      # Automatic path exploration
-├── src/test/java/                            # Unit tests
-├── run-symbolic-execution.sh/.bat/.ps1       # Execution scripts
-└── README.md                                 # This file
-
-amalthea-acset-integration/                    # Vitruvius example
-├── vsum/src/main/java/.../Test.java          # Model transformation entry point
-└── consistency/src/main/reactions/           # Transformation reactions
+CocoPath/
+├── knarr-runtime/
+│   ├── src/main/java/
+│   │   └── edu/neu/ccs/prl/galette/
+│   │       ├── concolic/knarr/runtime/
+│   │       │   ├── GaletteSymbolicator.java      # Symbolic value creation with tag reuse
+│   │       │   ├── PathExplorer.java             # Systematic path exploration
+│   │       │   ├── PathUtils.java                # Path constraint management
+│   │       │   ├── SymbolicComparison.java       # Constraint recording from reactions
+│   │       │   └── Z3ConstraintSolver.java       # Z3 SMT solver integration
+│   │       └── vitruvius/
+│   │           ├── AutomaticVitruvPathExploration.java         # Single-variable exploration
+│   │           └── AutomaticVitruvMultiVarPathExploration.java # Multi-variable exploration
+│   └── run-symbolic-execution.sh                 # Execution scripts
+│
+├── amalthea-acset-integration/                   # Vitruvius case study
+│   ├── vsum/src/main/java/.../Test.java         # Model transformation entry point
+│   └── consistency/src/main/reactions/           # Consistency preservation rules
+│
+└── README.md                                      # This file
 ```
 
-## Running the Project
+## Running CoCoPath
 
 ### Prerequisites
 
-1. **Java 17**
+1. **Java 17** (OpenJDK recommended)
 2. **Maven 3.6+**
-3. **Python 3.x** (for dependency switching)
-
-
-### Helper Classes
-
-- **`AutomaticVitruvPathExplorationHelper`** - Shared utilities for path exploration
-  - `verifyInstrumentation()` - Checks that Galette instrumentation is working
-  - `initializeEMF()` - Initializes EMF resource factories
-  - `loadVitruviusTestClass()` - Loads the Vitruvius Test class
-  - `createWorkingDirectory()` - Creates output directories
-  - `exportSingleVarResults()` - Exports single-variable exploration results
-  - `exportMultiVarResults()` - Exports multi-variable exploration results
-
-### Syncing Generated Reactions (After Upstream Changes)
-
-When the upstream Amalthea-acset project changes (e.g., renaming InterruptTask to InitTask), you need to sync the generated reactions code:
-
-```bash
-# 1. Build external Amalthea-acset to generate new reactions
-cd /path/to/Amalthea-acset
-mvn clean generate-sources
-
-# 2. Copy generated reactions to internal project
-cd knarr-runtime
-./copy-generated-reactions.sh
-
-# Or with custom paths:
-./copy-generated-reactions.sh --external-path /path/to/Amalthea-acset
-
-# 3. Build internal project with updated reactions
-cd ../amalthea-acset-integration
-mvn clean compile -Dcheckstyle.skip=true
-```
-
-The `copy-generated-reactions.sh` script:
-- Copies generated reactions from `Amalthea-acset/consistency/target/generated-sources/reactions/mir/`
-- To `amalthea-acset-integration/consistency/src/main/java/mir/`
-- Creates backups of existing files
-- Supports custom paths with `--external-path` and `--internal-path` flags
+3. **Python 3.x** (for dependency management scripts)
+4. **Z3 Solver** (automatically configured)
 
 ### Quick Start
 
 ```bash
 cd knarr-runtime
 
-# Interactive mode (choose internal or external)
+# Interactive mode - choose execution type
 ./run-symbolic-execution.sh
 
-# Or specify directly:
-./run-symbolic-execution.sh --internal   # Fast, simplified
+# Direct execution modes:
+./run-symbolic-execution.sh --internal   # Simplified test case
 ./run-symbolic-execution.sh --external   # Full Vitruvius transformations
-./run-symbolic-execution.sh --multivar   # Multi-variable (25 paths)
+./run-symbolic-execution.sh --multivar   # Multi-variable exploration (25 paths)
 ```
 
 **Windows:**
@@ -226,90 +121,137 @@ run-symbolic-execution.bat multivar
 .\run-symbolic-execution.ps1 -MultiVar
 ```
 
-**Override path at runtime** (all platforms):
-```bash
-# Bash
-./run-symbolic-execution.sh --external --external-path /custom/path
-
-# PowerShell
-.\run-symbolic-execution.ps1 -UseExternal -ExternalPath "D:\Custom\Path"
-```
-
 ### Execution Modes
 
-#### Internal Mode (Default)
-- **Output**: Simplified XMI stubs
-- **Requirements**: None (self-contained)
-- **Use case**: Quick testing, demonstration
+#### Single-Variable Exploration
+- Explores one symbolic user decision with 5 possible values
+- Generates 5 execution paths
+- Output: `execution_paths_automatic.json` and model files in `galette-output-automatic-{0..4}/`
 
-#### External Mode
-- **Output**: Full Vitruvius reactions & transformations
-- **Requirements**: External Amalthea-acset repository: https://github.com/IngridJiang/Amalthea-acset
-- **Use case**: Real-world model transformation scenarios
+#### Multi-Variable Exploration
+- Explores TWO symbolic user decisions simultaneously
+- Generates 25 execution paths (5 × 5 combinations)
+- Output: `execution_paths_multivar.json` and models in `galette-output-multivar-{i}_{j}/`
 
 ### Expected Output
 
-#### Single-Variable Exploration (5 paths)
-Explores one user choice with 5 possible values:
-
-**Output:**
-- `execution_paths_automatic.json` - 5 paths (user_choice ∈ {0,1,2,3,4})
-- `galette-output-automatic-{0..4}/` - Generated models per path
-
-#### Multi-Variable Exploration (25 paths)
-Explores TWO user choices simultaneously (5 × 5 = 25 combinations):
-
-**Output:**
-- `execution_paths_multivar.json` - 25 paths (all combinations)
-- `galette-output-multivar-{i}_{j}/` - Models for each (i,j) combination where i,j ∈ {0,1,2,3,4}
-
-### Output Files
-
 ```
 knarr-runtime/
-├── execution_paths_automatic.json        # Single-variable: 5 paths
-├── execution_paths_multivar.json         # Multi-variable: 25 paths
-├── galette-output-automatic-*/           # Single-var models per path
-└── galette-output-multivar-*_*/          # Multi-var models per path combination
+├── execution_paths_automatic.json        # Single-variable: 5 paths with constraints
+├── execution_paths_multivar.json         # Multi-variable: 25 path combinations
+├── galette-output-automatic-*/           # Generated models per path
+└── galette-output-multivar-*_*/          # Models for each input combination
     └── galette-test-output/
-        └── vsum-output.xmi               # Synchronized Amalthea+ASCET models
+        └── vsum-output.xmi               # Synchronized AMALTHEA+ASCET models
 ```
 
+Each path record contains:
+- **pathId**: Unique path identifier
+- **inputs**: Concrete values for symbolic variables
+- **constraints**: Path conditions as logical formulas
+- **executionTime**: Performance metrics
 
+## Case Study: AMALTHEA-ASCET Synchronization
 
-### Consistency Preservation via Vitruvius
+The evaluated scenario demonstrates consistency preservation between:
+- **AMALTHEA**: Models ECU architecture and operating system aspects
+- **ASCET**: Specifies functional behavior of embedded control systems
 
-Vitruvius ensures **bi-directional consistency** between models using *Consistency Preservation Rules (CPRs)*:
+When adding a Task to AMALTHEA, the CPR must create a corresponding task in ASCET. However, ASCET defines multiple concrete task subtypes (InitTask, PeriodicTask, SoftwareTask, TimeTableTask) while AMALTHEA uses abstract Tasks. This mapping requires domain knowledge and user decisions.
 
-- When a task is added to Amalthea → corresponding ASCET task is created automatically
-- User choices during transformation → trigger different reaction rules
-- Each path produces a **valid consistent state** of the model pair
+### Modifying Consistency Preservation Rules
 
-### What CocoPath Adds
+To modify the reactions or experiment with different transformation logic:
 
-CocoPath augments Vitruvius with **systematic path exploration**:
+1. **Clone the external AMALTHEA-ASCET repository**:
+   ```bash
+   git clone https://github.com/IngridJiang/Amalthea-acset
+   ```
 
-1. **Symbolic Inputs**: User decisions treated as symbolic variables
-2. **Automatic Path Generation**: Constraint solver generates all valid input combinations
-3. **Coverage Guarantee**: Explores every possible decision path
-4. **Artifact Generation**: Each path produces a complete, consistent model pair
+2. **Modify the reactions** in the external project and generate Java code:
+   ```bash
+   cd Amalthea-acset
+   mvn clean generate-sources
+   ```
 
-**For each explored path, CocoPath generates:**
-- Amalthea model (with chosen task configuration)
-- Synchronized ASCET model (produced by Vitruvius reactions)
-- Path constraints (logical formula describing this execution)
-- Execution time (performance measurement)
+3. **Copy generated reactions** to the internal CoCoPath project:
+   ```bash
+   cd /path/to/CocoPath/knarr-runtime
+   ./copy-generated-reactions.sh --external-path /path/to/Amalthea-acset
+   ```
 
-This enables engineers to **systematically explore alternative consistency-preserving evolution scenarios** of the V-SUM
+4. **Rebuild the internal project** with updated reactions:
+   ```bash
+   cd ../amalthea-acset-integration
+   mvn clean compile -Dcheckstyle.skip=true
+   ```
+
+The `copy-generated-reactions.sh` script copies generated Java code from:
+- Source: `Amalthea-acset/consistency/target/generated-sources/reactions/mir/`
+- Target: `amalthea-acset-integration/consistency/src/main/java/mir/`
+
+CoCoPath systematically explores all possible mappings, generating:
+- Target ASCET models for each choice
+- Model difference metrics (added/modified/deleted elements)
+- Path constraints characterizing each execution
+
+This enables engineers to:
+- Compare transformation outcomes quantitatively
+- Identify high-impact decision points
+- Understand consequences before committing changes
+
+## Technical Implementation
+
+### Symbolic Value Management
+- **Tag Creation**: `GaletteSymbolicator.getOrMakeSymbolicInt(qualifiedName, value, min, max)`
+- **Tag Reuse**: Qualified names enable consistent symbolic variables across iterations
+- **Expression Mapping**: Tags are associated with Green/Z3 expressions for solving
+
+### Path Constraint Construction
+- **Domain Constraints**: Define valid value ranges (e.g., `0 <= userChoice < 5`)
+- **Path Constraints**: Record executed branches (e.g., `userChoice == 2`)
+- **Negation Strategy**: Systematically negate constraints to explore alternative paths
+
+### Exploration Algorithm
+1. Initialize with concrete input values
+2. Execute transformation while collecting constraints
+3. Negate selected constraints to generate new inputs
+4. Solve constraint system with Z3
+5. Re-execute with new inputs if satisfiable
+6. Terminate when no unexplored feasible paths remain
+
+## Evaluation Results
+
+Based on the ECMFA-20 paper evaluation:
+
+- **Path Coverage**: Achieves complete systematic exploration (5/5 single-variable, 25/25 multi-variable paths)
+- **Scalability**: Per-path execution time increases only 1.42× despite 5× increase in paths
+- **Memory Overhead**: Moderate 1.36× overhead, primarily from dynamic taint tracking
+- **Compatibility**: Only symbolic execution tool fully compatible with Vitruvius/EMF/OSGi
+
+## Limitations
+
+- **Manual Constraint Registration**: Requires explicit constraint recording in CPRs (future work: automatic weaving)
+- **Third-party Libraries**: Cannot track decisions in external code
+- **Runtime Overhead**: Dynamic taint tracking introduces performance cost
+- **Domain Constraints**: Must be manually specified based on domain knowledge
+
+## Future Work
+
+- Bytecode-level constraint extraction for full automation
+- Support for additional transformation frameworks beyond Vitruvius
+- Optimization of taint tracking overhead
+- Integration with model verification techniques
 
 
 ## License
 
-See [LICENSE](../LICENSE) in the project root for Galette.
+See [LICENSE](../LICENSE) in the project root.
 
 ## Acknowledgements
 
-- **Galette**: Northeastern University
-- **GreenSolver**: University of Stellenbosch
-- **Vitruvius**: KIT (Karlsruhe Institute of Technology)
-- **Amalthea-ASCET**: Automotive model transformation Example from Bosch
+- **Galette**: Northeastern University (Dynamic Taint Tracking)
+- **Knarr**: Original symbolic execution engine (modified for Galette integration)
+- **Z3**: Microsoft Research (SMT Solver)
+- **Vitruvius**: Karlsruhe Institute of Technology (Model Transformation Framework)
+- **AMALTHEA-ASCET**: Bosch (Industrial case study)
