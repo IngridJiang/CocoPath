@@ -22,10 +22,19 @@ public class AutomaticVitruvPathExplorationHelper {
 
     /**
      * Verify that Galette instrumentation is working.
-     * Exits the program if instrumentation is not functional.
+     * Exits the program if instrumentation is not functional (unless disabled via system property).
      */
     public static void verifyInstrumentation() {
+        // Allow skipping instrumentation check for manual constraint collection
+        boolean skipCheck = Boolean.getBoolean("skip.instrumentation.check");
+
         System.out.println("[PathExplorationHelper] Checking instrumentation...");
+        if (skipCheck) {
+            System.out.println("WARNING: Instrumentation check skipped (skip.instrumentation.check=true)");
+            System.out.println("         Using manual constraint collection mode.");
+            return;
+        }
+
         try {
             Integer testValue = 42;
             Tag testTag = Tag.of("test");
@@ -35,6 +44,7 @@ public class AutomaticVitruvPathExplorationHelper {
             if (retrievedTag == null) {
                 System.err.println("ERROR: Instrumentation is NOT working! Tainter.getTag() returned null.");
                 System.err.println("The program must be run with the instrumented JVM and Galette agent.");
+                System.err.println("Tip: Set -Dskip.instrumentation.check=true to use manual constraint collection.");
                 System.err.println("Exiting - symbolic execution will not work without instrumentation.");
                 System.exit(1);
             } else {

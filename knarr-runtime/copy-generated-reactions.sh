@@ -14,9 +14,10 @@
 
 set -e
 
-# Default paths
-EXTERNAL_PATH="/home/anne/CocoPath/Amalthea-acset"
-INTERNAL_PATH="/home/anne/CocoPath/CocoPath/amalthea-acset-integration"
+# Default paths - Auto-detect relative to script
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+EXTERNAL_PATH="$(cd "$SCRIPT_DIR/../.." && pwd)/Amathea-acset"
+INTERNAL_PATH="$(cd "$SCRIPT_DIR/.." && pwd)/amalthea-acset-integration"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do

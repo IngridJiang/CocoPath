@@ -239,7 +239,10 @@ if ($MultiVar) {
 
 $mvnSuccess = $true
 try {
-    mvn exec:java "-Dexec.mainClass=$mainClass" "-Dcheckstyle.skip=true"
+    mvn exec:java "-Dexec.mainClass=$mainClass" "-Dcheckstyle.skip=true" `
+        "-Dskip.instrumentation.check=true" `
+        "-Duse.z3.solver=true" "-Dz3.solver.debug=false" `
+        "-Dz3.timeout.ms=10000" "-Dz3.fallback.simple=true"
     if ($LASTEXITCODE -ne 0) {
         $mvnSuccess = $false
         Write-Host ""

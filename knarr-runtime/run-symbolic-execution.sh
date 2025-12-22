@@ -38,7 +38,7 @@ set -e
 USE_EXTERNAL=false
 USE_MULTIVAR=false
 FORCE_REBUILD=false
-EXTERNAL_PATH="/home/anne/CocoPath/Amalthea-acset"  # <-- MODIFY THIS for your PC
+EXTERNAL_PATH="$(cd "$(dirname "$0")/../.." && pwd)/Amathea-acset"  # Auto-detect relative to script
 INTERACTIVE_MODE=true
 
 # ============================================================================
@@ -355,7 +355,9 @@ fi
 # If you need dynamic instrumentation, run the JAR directly instead of using exec:java
 
 set +e
-mvn exec:java -Dexec.mainClass="$MAIN_CLASS" -Dcheckstyle.skip=true
+mvn exec:java -Dexec.mainClass="$MAIN_CLASS" -Dcheckstyle.skip=true \
+    -Dskip.instrumentation.check=true \
+    -Duse.z3.solver=true -Dz3.solver.debug=false -Dz3.timeout.ms=10000 -Dz3.fallback.simple=true
 MVN_EXIT=$?
 set -e
 

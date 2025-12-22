@@ -129,7 +129,16 @@ if "%USE_EXTERNAL%"=="true" (
 
     echo [2/4] Temporarily switching to external dependency...
     REM Use Python script to safely switch dependencies
-    python switch-dependency.py external pom.xml
+    REM Detect available Python command
+    set "PYTHON_CMD="
+    where python.exe >nul 2>&1 && set "PYTHON_CMD=python.exe"
+    if "!PYTHON_CMD!"=="" where python3 >nul 2>&1 && set "PYTHON_CMD=python3"
+    if "!PYTHON_CMD!"=="" where python >nul 2>&1 && set "PYTHON_CMD=python"
+    if "!PYTHON_CMD!"=="" (
+        echo ERROR: Python not found. Cannot switch dependencies.
+        exit /b 1
+    )
+    !PYTHON_CMD! switch-dependency.py external pom.xml
     if errorlevel 1 (
         echo ERROR: Failed to switch to external dependency
         exit /b 1
@@ -169,7 +178,16 @@ if "%USE_EXTERNAL%"=="true" (
 
     echo [1/4] Switching to internal dependency...
     REM Use Python script to safely switch dependencies
-    python switch-dependency.py internal pom.xml
+    REM Detect available Python command
+    set "PYTHON_CMD="
+    where python.exe >nul 2>&1 && set "PYTHON_CMD=python.exe"
+    if "!PYTHON_CMD!"=="" where python3 >nul 2>&1 && set "PYTHON_CMD=python3"
+    if "!PYTHON_CMD!"=="" where python >nul 2>&1 && set "PYTHON_CMD=python"
+    if "!PYTHON_CMD!"=="" (
+        echo ERROR: Python not found. Cannot switch dependencies.
+        exit /b 1
+    )
+    !PYTHON_CMD! switch-dependency.py internal pom.xml
     if errorlevel 1 (
         echo ERROR: Failed to switch to internal dependency
         exit /b 1
@@ -218,7 +236,10 @@ if "%USE_MULTIVAR%"=="true" (
 REM Note: Javaagent is not compatible with mvn exec:java
 REM We use manual constraint collection via PathUtils.addIntDomainConstraint() and addSwitchConstraint()
 
-call mvn exec:java -Dexec.mainClass="%MAIN_CLASS%" -Dcheckstyle.skip=true
+call mvn exec:java -Dexec.mainClass="%MAIN_CLASS%" -Dcheckstyle.skip=true ^
+    -Dskip.instrumentation.check=true ^
+    -Duse.z3.solver=true -Dz3.solver.debug=false ^
+    -Dz3.timeout.ms=10000 -Dz3.fallback.simple=true
 set "MVN_SUCCESS=%ERRORLEVEL%"
 
 if not "%MVN_SUCCESS%"=="0" (

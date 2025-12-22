@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash:*)",
+      "Bash(powershell -Command \"Test-Path ''C:\\\\Users\\\\10239\\\\Amathea-acset''\")",
+      "Bash(where:*)",
+      "Bash(cmd /c \"set \"\"PYTHON_CMD=\"\" && where python.exe >nul 2>&1 && set \"\"PYTHON_CMD=python.exe\"\" && echo !PYTHON_CMD!\")",
+      "Bash(mvn clean install:*)",
+      "Bash(mvn clean package:*)",
+      "Bash(mvn package:*)",
+      "Bash(mvn clean compile:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(ls:*)",
+      "Bash(./run-symbolic-execution.bat)",
+      "Bash(./run-symbolic-execution.ps1)",
+      "Bash(powershell -File run-symbolic-execution.ps1)",
+      "Bash(java:*)",
+      "Bash(cat:*)",
+      "Bash(tee:*)",
+      "Bash(mvn exec:java:*)",
+      "Bash(run-with-instrumentation.bat:*)",
+      "Bash(cmd /c run-with-instrumentation.bat)",
+      "Bash(mvn process-test-resources:*)",
+      "Bash(mvn dependency:build-classpath:*)",
+      "Bash(./test-auto-mode.bat)",
+      "Bash(./test-auto-with-regular-java.bat)",
+      "Bash(xargs cat:*)",
+      "Bash(./test-auto-fixed.bat)",
+      "Bash(mvn test-compile:*)",
+      "Bash(./compile-and-run-simple-test.bat)",
+      "Bash(mvn compile:*)"
+    ]
+  }
+}
