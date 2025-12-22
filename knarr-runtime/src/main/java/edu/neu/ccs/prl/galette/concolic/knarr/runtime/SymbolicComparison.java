@@ -335,35 +335,50 @@ public class SymbolicComparison {
             return -1; // Dialog cancelled
         }
 
-        // Check if the value has a tag
+        // HYBRID APPROACH: Try Tag first, fallback to ThreadLocal inference
+
+        // Strategy 1: Try to extract tag using Galette's Tainter
         Tag tag = null;
+        String qualifiedName = null;
+
         try {
-            // Try to extract tag using Galette's Tainter
             tag = edu.neu.ccs.prl.galette.internal.runtime.Tainter.getTag(selected);
             if (tag != null && !tag.isEmpty()) {
+                qualifiedName = tag.getLabels()[0].toString();
+
                 System.out.println("[SymbolicComparison:symbolicVitruviusChoice]   - Tag found: " + tag);
-                System.out.println("[SymbolicComparison:symbolicVitruviusChoice]   - Tag labels: "
-                        + java.util.Arrays.toString(tag.getLabels()));
-
-                // Extract qualified name from tag label
-                String qualifiedName = tag.getLabels()[0].toString();
-
-                // Record ONLY the switch constraint (domain already handled elsewhere)
-                PathUtils.addSwitchConstraint(qualifiedName, selected);
-
-                System.out.println("[SymbolicComparison:symbolicVitruviusChoice]   - Recorded switch constraint: "
-                        + qualifiedName + " == " + selected);
-            } else {
                 System.out.println(
-                        "[SymbolicComparison:symbolicVitruviusChoice]   - No tag or empty tag on Integer value");
-                // Fallback: use generic variable name
-                // PathUtils.addSwitchConstraint("user_choice", selected);
+                        "[SymbolicComparison:symbolicVitruviusChoice]   - Qualified name from Tag: " + qualifiedName);
             }
         } catch (Exception e) {
             System.out.println("[SymbolicComparison:symbolicVitruviusChoice]   - Exception getting tag: "
                     + e.getClass().getName() + ": " + e.getMessage());
-            // Fallback to concrete handling
-            // PathUtils.addSwitchConstraint("user_choice", selected);
+        }
+
+        // Strategy 2: If Tag not available, use ThreadLocal inference (HYBRID fallback)
+        if (qualifiedName == null) {
+            qualifiedName = GaletteSymbolicator.getQualifiedNameForValue(selected);
+
+            if (qualifiedName != null) {
+                System.out.println(
+                        "[SymbolicComparison:symbolicVitruviusChoice]   - Qualified name inferred from ThreadLocal: "
+                                + qualifiedName);
+            } else {
+                System.out.println(
+                        "[SymbolicComparison:symbolicVitruviusChoice]   - WARNING: Cannot infer variable name for value "
+                                + selected);
+            }
+        }
+
+        // Record switch constraint if we have a qualified name (from either strategy)
+        if (qualifiedName != null) {
+            PathUtils.addSwitchConstraint(qualifiedName, selected);
+
+            System.out.println("[SymbolicComparison:symbolicVitruviusChoice]   - Recorded switch constraint: "
+                    + qualifiedName + " == " + selected);
+        } else {
+            System.err.println(
+                    "[SymbolicComparison:symbolicVitruviusChoice]   - ERROR: No qualified name available, switch constraint NOT recorded!");
         }
 
         System.out.println("[SymbolicComparison:symbolicVitruviusChoice]   - Returning: " + selected);

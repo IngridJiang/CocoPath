@@ -47,6 +47,12 @@ public class GaletteSymbolicator {
     public static final boolean DEBUG = true; // Boolean.valueOf(System.getProperty("DEBUG", "false"));
 
     /**
+     * Manual mode flag - when true, Tag verification is skipped.
+     * This is used when running with PathUtils API instead of javaagent instrumentation.
+     */
+    public static final boolean MANUAL_MODE = Boolean.valueOf(System.getProperty("skip.instrumentation.check", "false"));
+
+    /**
      * Internal class name for bytecode instrumentation.
      */
     public static final String INTERNAL_NAME = "edu/neu/ccs/prl/galette/concolic/knarr/runtime/GaletteSymbolicator";
@@ -77,6 +83,13 @@ public class GaletteSymbolicator {
      * 3. Qualified names uniquely identify symbolic input points
      */
     private static final ConcurrentHashMap<String, Tag> labelToTag = new ConcurrentHashMap<>();
+
+    /**
+     * ThreadLocal mapping from concrete values to their qualified names.
+     * Used for hybrid constraint collection when Tag propagation fails.
+     * This enables symbolicVitruviusChoice to infer variable names.
+     */
+    private static final ThreadLocal<Map<Integer, String>> valueToQualifiedName = ThreadLocal.withInitial(HashMap::new);
 
     static {
         initializeSymbolicator();
@@ -168,11 +181,15 @@ public class GaletteSymbolicator {
                             + " = " + concreteValue);
                 }
 
-                // CRITICAL FIX: Re-record constraints even when reusing tag!
-                // PathUtils.resetPC() clears constraints between iterations, so we must re-add them
-                // Both domain and switch constraints are needed for PathExplorer
+                // HYBRID: Record domain constraint here
+                // Switch constraint will be added by symbolicVitruviusChoice
                 PathUtils.addIntDomainConstraint(qualifiedName, min, max + 1);
-                PathUtils.addSwitchConstraint(qualifiedName, concreteValue);
+
+                // Register value-to-name mapping for hybrid inference
+                valueToQualifiedName.get().put(concreteValue, qualifiedName);
+
+                // Remove manual switch constraint (let symbolicVitruviusChoice handle it)
+                // PathUtils.addSwitchConstraint(qualifiedName, concreteValue);
 
                 if (DEBUG) {
                     System.out.println("[GaletteSymbolicator:getOrMakeSymbolicInt] Re-recorded constraints:");
@@ -183,17 +200,21 @@ public class GaletteSymbolicator {
                 // Apply the tag to the value and return
                 Integer taggedValue = Tainter.setTag(concreteValue, existingTag);
 
-                // Debug: Verify the tag was actually applied
-                Tag verifyTag = Tainter.getTag(taggedValue);
-                if (verifyTag == null) {
-                    System.err.println(
-                            "[GaletteSymbolicator:getOrMakeSymbolicInt] WARNING: Reused tag was not applied!");
-                    System.err.println("  Instrumentation may not be working. Check that Galette agent is loaded.");
-                } else {
-                    if (DEBUG) {
-                        System.out.println("[GaletteSymbolicator:getOrMakeSymbolicInt] Verified reused tag applied: "
-                                + verifyTag.getLabels()[0]);
+                // Debug: Verify the tag was actually applied (skip in manual mode)
+                if (!MANUAL_MODE) {
+                    Tag verifyTag = Tainter.getTag(taggedValue);
+                    if (verifyTag == null) {
+                        System.err.println(
+                                "[GaletteSymbolicator:getOrMakeSymbolicInt] WARNING: Reused tag was not applied!");
+                        System.err.println("  Instrumentation may not be working. Check that Galette agent is loaded.");
+                    } else {
+                        if (DEBUG) {
+                            System.out.println("[GaletteSymbolicator:getOrMakeSymbolicInt] Verified reused tag applied: "
+                                    + verifyTag.getLabels()[0]);
+                        }
                     }
+                } else if (DEBUG) {
+                    System.out.println("[GaletteSymbolicator:getOrMakeSymbolicInt] Manual mode: Skipping tag verification for reused tag");
                 }
 
                 return taggedValue;
@@ -208,13 +229,16 @@ public class GaletteSymbolicator {
             // Store for reuse in future iterations
             labelToTag.put(qualifiedName, newTag);
 
-            // Record domain constraint [min, max] (only on first iteration)
+            // HYBRID: Record domain constraint here
+            // Switch constraint will be added by symbolicVitruviusChoice
             // Note: PathUtils.addIntDomainConstraint uses exclusive upper bound
             PathUtils.addIntDomainConstraint(qualifiedName, min, max + 1);
 
-            // CRITICAL: Also record the switch constraint for this specific value
-            // This is needed for path exploration to generate alternative inputs
-            PathUtils.addSwitchConstraint(qualifiedName, concreteValue);
+            // Register value-to-name mapping for hybrid inference
+            valueToQualifiedName.get().put(concreteValue, qualifiedName);
+
+            // Remove manual switch constraint (let symbolicVitruviusChoice handle it)
+            // PathUtils.addSwitchConstraint(qualifiedName, concreteValue);
 
             if (DEBUG) {
                 System.out.println("[GaletteSymbolicator:getOrMakeSymbolicInt] Created new tag for: " + qualifiedName
@@ -226,11 +250,15 @@ public class GaletteSymbolicator {
             // Apply the tag to the value and return
             Integer taggedValue = Tainter.setTag(concreteValue, newTag);
 
-            // Debug: Verify the tag was actually applied
-            Tag verifyTag = Tainter.getTag(taggedValue);
-            if (verifyTag == null) {
-                System.err.println("[GaletteSymbolicator:getOrMakeSymbolicInt] WARNING: New tag was not applied!");
-                System.err.println("  Instrumentation may not be working. Check that Galette agent is loaded.");
+            // Debug: Verify the tag was actually applied (skip in manual mode)
+            if (!MANUAL_MODE) {
+                Tag verifyTag = Tainter.getTag(taggedValue);
+                if (verifyTag == null) {
+                    System.err.println("[GaletteSymbolicator:getOrMakeSymbolicInt] WARNING: New tag was not applied!");
+                    System.err.println("  Instrumentation may not be working. Check that Galette agent is loaded.");
+                }
+            } else if (DEBUG) {
+                System.out.println("[GaletteSymbolicator:getOrMakeSymbolicInt] Manual mode: Skipping tag verification");
             }
 
             return taggedValue;
@@ -673,12 +701,42 @@ public class GaletteSymbolicator {
     }
 
     /**
+     * Get qualified name for a concrete value (for hybrid constraint collection).
+     * This is used by symbolicVitruviusChoice to auto-infer variable names
+     * when Tag propagation fails.
+     *
+     * @param value The concrete value
+     * @return Qualified name, or null if not found
+     */
+    public static String getQualifiedNameForValue(int value) {
+        String name = valueToQualifiedName.get().get(value);
+        if (DEBUG && name != null) {
+            System.out.println(
+                    "[GaletteSymbolicator:getQualifiedNameForValue] Resolved value " + value + " -> " + name);
+        }
+        return name;
+    }
+
+    /**
+     * Clear value-to-name mapping at the end of each iteration.
+     * This is called by PathExplorer after each iteration.
+     */
+    public static void clearValueMapping() {
+        Map<Integer, String> map = valueToQualifiedName.get();
+        if (DEBUG && !map.isEmpty()) {
+            System.out.println("[GaletteSymbolicator:clearValueMapping] Clearing " + map.size() + " value mappings");
+        }
+        map.clear();
+    }
+
+    /**
      * Reset the symbolicator state.
      */
     public static void reset() {
         valueToTag.clear();
         tagToExpression.clear();
         labelToTag.clear(); // Clear label-to-tag mappings for tag reuse
+        clearValueMapping(); // Also clear value-to-name mapping
         mySoln = null;
         GaletteGreenBridge.clearVariableCache();
         PathUtils.reset();

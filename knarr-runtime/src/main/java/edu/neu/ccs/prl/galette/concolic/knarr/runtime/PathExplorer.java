@@ -315,6 +315,9 @@ public class PathExplorer {
             // We need to preserve labelToTag mappings for tag reuse
             PathUtils.resetPC();
 
+            // Clear value-to-name mapping for hybrid constraint collection
+            GaletteSymbolicator.clearValueMapping();
+
             // Create map with indexed keys for now - will be replaced with actual variable names after execution
             Map<String, Object> inputsForExecution = new HashMap<>();
             for (int i = 0; i < currentInputsList.size(); i++) {

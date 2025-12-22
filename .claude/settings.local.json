@@ -29,7 +29,13 @@
       "Bash(./test-auto-fixed.bat)",
       "Bash(mvn test-compile:*)",
       "Bash(./compile-and-run-simple-test.bat)",
-      "Bash(mvn compile:*)"
+      "Bash(mvn compile:*)",
+      "Bash(cmd /c \"run-symbolic-execution.bat multivar > log.txt 2>&1\")",
+      "Bash(run-symbolic-execution.bat:*)",
+      "Bash(javap:*)",
+      "Bash(cmd /c \"dir /s /b %USERPROFILE%\\\\.m2\\\\repository\\\\edu\\\\gmu\\\\swe\\\\greensolver 2>nul | findstr pom\")",
+      "Bash(cmd /c \"cd /d C:\\\\Users\\\\10239\\\\galette-vitruv\\\\knarr-runtime && mvn clean compile -DskipTests -Dcheckstyle.skip=true 2>&1 | findstr /C:\"ERROR\" /C:\"WARNING\" /C:\"BUILD SUCCESS\" /C:\"BUILD FAILURE\"\")",
+      "Bash(cmd /c \"cd /d C:\\\\Users\\\\10239\\\\galette-vitruv\\\\knarr-runtime && mvn clean compile -DskipTests -Dcheckstyle.skip=true\")"
     ]
   }
 }
