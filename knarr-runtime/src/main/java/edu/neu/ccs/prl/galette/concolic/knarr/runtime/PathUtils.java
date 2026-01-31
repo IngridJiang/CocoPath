@@ -9,9 +9,19 @@ import za.ac.sun.cs.green.expr.Operation.Operator;
 /**
  * Galette-based path constraint utilities.
  *
- * This class replaces the original Phosphor-based PathUtils with
+ * <p>This class replaces the original Phosphor-based PathUtils with
  * Galette-compatible APIs for managing symbolic execution constraints.
  *
+ * @origin KNARR_GALETTE - New class integrating Knarr concepts with Galette.
+ *         This is the Galette-native equivalent of gmu-swe/knarr's PathUtils class.
+ *         Key differences from the original Knarr PathUtils:
+ *         <ul>
+ *           <li>Uses Galette Tag instead of Phosphor Taint&lt;Expression&gt;</li>
+ *           <li>Removes Phosphor-specific imports (edu.columbia.cs.psl.phosphor.*)</li>
+ *           <li>Simplified API focused on constraint collection rather than bytecode ops</li>
+ *           <li>Adds addIntDomainConstraint() and addSwitchConstraint() for Vitruvius use</li>
+ *         </ul>
+ * @see edu.gmu.swe.knarr.runtime.PathUtils Original Knarr PathUtils (Phosphor-based)
  */
 public class PathUtils {
 

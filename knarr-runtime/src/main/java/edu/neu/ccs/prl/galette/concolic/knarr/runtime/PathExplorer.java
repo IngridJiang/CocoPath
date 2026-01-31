@@ -7,11 +7,24 @@ import za.ac.sun.cs.green.expr.Expression;
 import za.ac.sun.cs.green.expr.Operation.Operator;
 
 /**
- * @purpose Automatic path exploration for symbolic execution
- * @feature DFS/BFS path exploration strategies
- * @feature Systematic constraint negation with domain constraints
- * @feature Path pruning and optimization
+ * Automatic path exploration engine for concolic execution.
  *
+ * <p>This class orchestrates systematic exploration of all execution paths
+ * by collecting path constraints and using constraint solving to generate
+ * new inputs that exercise different branches.
+ *
+ * @origin KNARR_GALETTE - New class integrating Knarr concepts with Galette.
+ *         This class is inspired by Knarr's concolic execution approach but
+ *         redesigned for Galette's taint tracking system. Key features:
+ *         <ul>
+ *           <li>exploreInteger() - Single-variable path exploration</li>
+ *           <li>exploreMultipleIntegers() - Multi-variable path exploration</li>
+ *           <li>Uses Z3ConstraintSolver for constraint solving</li>
+ *           <li>Supports domain-bounded exploration (e.g., 5 values = 5 paths)</li>
+ *           <li>Tracks path coverage to avoid redundant exploration</li>
+ *         </ul>
+ *         Unlike original Knarr which uses server-client architecture for solving,
+ *         this uses direct Z3 integration via z3-turnkey.
  */
 public class PathExplorer {
 

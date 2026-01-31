@@ -12,6 +12,20 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Path constraint utilities for Knarr (Phosphor-based).
+ *
+ * <p>This class provides utilities for managing path conditions during
+ * symbolic execution, including constraint collection and bytecode operation tracking.
+ *
+ * @origin KNARR_ORIGINAL - Original Knarr class from gmu-swe/knarr.
+ *         This class uses Phosphor's Taint&lt;Expression&gt; objects and is designed
+ *         for bytecode-level operation tracking (IADD, ISUB, IMUL, LCMP, etc.).
+ *         Key methods include performLongOp(), performIntOp(), and getCurPC().
+ *         In CocoPath, the Galette-based PathUtils provides equivalent functionality
+ *         using Galette's Tag system instead.
+ * @see edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathUtils Galette equivalent
+ */
 public class PathUtils {
 	private static IntConstant O000FFFF;
 	public static BVConstant BV0_32;

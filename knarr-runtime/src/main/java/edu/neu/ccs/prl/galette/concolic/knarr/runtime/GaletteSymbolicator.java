@@ -14,13 +14,21 @@ import za.ac.sun.cs.green.expr.*;
 /**
  * Galette-based symbolic execution engine.
  *
- * This class migrates Knarr's Phosphor-based Symbolicator to use Galette APIs.
+ * <p>This class migrates Knarr's Phosphor-based Symbolicator to use Galette APIs.
  * It handles symbolic value creation, constraint solving, and input generation.
  *
- *    @purpose Core symbolic execution engine using Galette API
- *    @feature makeSymbolicInt(), makeSymbolicDouble(), makeSymbolicString()
- *    @feature Direct integration with Galette Tag system
- *    @feature Cleaner API without Phosphor dependencies
+ * @origin KNARR_GALETTE - New class integrating Knarr concepts with Galette.
+ *         This is the Galette-native equivalent of gmu-swe/knarr's Symbolicator class.
+ *         The original Knarr Symbolicator uses Phosphor's taint tracking; this version
+ *         uses Galette's Tag system for modern JVM compatibility (Java 8-21).
+ *         Key adaptations:
+ *         <ul>
+ *           <li>Uses Galette Tag instead of Phosphor Taint&lt;Expression&gt;</li>
+ *           <li>Uses Galette Tainter API instead of Phosphor's $$PHOSPHORTAGGED methods</li>
+ *           <li>Adds tag reuse via labelToTag map for path exploration iterations</li>
+ *           <li>Integrates with Z3ConstraintSolver instead of Knarr server</li>
+ *         </ul>
+ * @see edu.gmu.swe.knarr.runtime.Symbolicator Original Knarr Symbolicator (Phosphor-based)
  */
 public class GaletteSymbolicator {
 

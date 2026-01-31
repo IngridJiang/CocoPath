@@ -8,11 +8,19 @@ import za.ac.sun.cs.green.expr.Operation.Operator;
 /**
  * Utility class for performing symbolic comparisons and collecting path constraints.
  *
- * This class provides methods to compare symbolic values while automatically
+ * <p>This class provides methods to compare symbolic values while automatically
  * collecting the corresponding path constraints for concolic execution.
  *
- * @purpose Specialized comparison operations for symbolic values
- * @feature Handles ==, !=, <, >, <=, >= with constraints
+ * @origin COCOPATH_VITRUVIUS - New class for Vitruvius reactions tracking use case.
+ *         This class was created specifically for CocoPath to enable symbolic constraint
+ *         collection in Vitruvius consistency reactions. It provides:
+ *         <ul>
+ *           <li>symbolicVitruviusChoice() - Records user interaction choices as path constraints</li>
+ *           <li>symbolicSwitch() - Handles switch/case decision points in reactions</li>
+ *           <li>Comparison operators (greaterThan, lessThan, etc.) with automatic constraint collection</li>
+ *         </ul>
+ *         This enables exploration of all possible execution paths through Vitruvius
+ *         model transformation reactions.
  */
 public class SymbolicComparison {
 

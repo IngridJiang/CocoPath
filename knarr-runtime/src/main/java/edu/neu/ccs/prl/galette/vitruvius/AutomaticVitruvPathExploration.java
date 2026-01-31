@@ -10,16 +10,25 @@ import java.util.List;
 /**
  * Automatic Vitruvius path exploration using constraint-based input generation.
  *
- * This example demonstrates PROPER symbolic execution:
- * 1. No manual domain constraints - extracted from switch statements
- * 2. Automatic constraint collection via bytecode instrumentation
- * 3. Constraint-based input generation to explore all feasible paths
- * 4. No hardcoded test inputs - the solver finds them!
+ * <p>This example demonstrates PROPER symbolic execution:
+ * <ol>
+ *   <li>No manual domain constraints - extracted from switch statements</li>
+ *   <li>Automatic constraint collection via bytecode instrumentation</li>
+ *   <li>Constraint-based input generation to explore all feasible paths</li>
+ *   <li>No hardcoded test inputs - the solver finds them!</li>
+ * </ol>
  *
- * @purpose Automatic path exploration for Vitruvius VSUM
- * @feature Explores all user dialog choices
- * @feature Generates test inputs for transformations
- *
+ * @origin COCOPATH_VITRUVIUS - New class for Vitruvius reactions tracking use case.
+ *         This is the main entry point for single-variable path exploration in
+ *         Vitruvius consistency reactions. It demonstrates the CocoPath workflow:
+ *         <ul>
+ *           <li>Load instrumented Vitruvius VSUM with model transformation reactions</li>
+ *           <li>Use PathExplorer to systematically explore all user interaction paths</li>
+ *           <li>Collect path constraints from SymbolicComparison.symbolicVitruviusChoice()</li>
+ *           <li>Use Z3 to solve for inputs that exercise each path</li>
+ *           <li>Export results showing all 5 possible task type creation paths</li>
+ *         </ul>
+ * @see AutomaticVitruvMultiVarPathExploration For multi-variable exploration (5x5=25 paths)
  */
 public class AutomaticVitruvPathExploration {
 

@@ -10,12 +10,22 @@ import java.util.*;
 /**
  * Automatic multi-variable path exploration for Vitruvius transformations.
  *
- * This class demonstrates exploring all combinations of TWO user choices,
+ * <p>This class demonstrates exploring all combinations of multiple user choices,
  * leading to N × M total paths (e.g., 5 × 5 = 25 paths for two 5-choice switches).
  *
- * Example: Adding two tasks to a model, where each task has 5 type options.
+ * <p>Example: Adding two tasks to a model, where each task has 5 type options.
  *
- * @author CocoPath
+ * @origin COCOPATH_VITRUVIUS - New class for Vitruvius reactions tracking use case.
+ *         Extends single-variable exploration to handle multiple symbolic variables.
+ *         This enables complete exploration of user interaction scenarios involving
+ *         multiple decision points, such as:
+ *         <ul>
+ *           <li>Adding two tasks to a model (Task1 type × Task2 type = 25 combinations)</li>
+ *           <li>Configuring multiple aspects of a model transformation</li>
+ *           <li>Exploring all branches in reactions with multiple user dialogs</li>
+ *         </ul>
+ *         Uses PathExplorer.exploreMultipleIntegers() for systematic combination exploration.
+ * @see AutomaticVitruvPathExploration For single-variable exploration
  */
 public class AutomaticVitruvMultiVarPathExploration {
 

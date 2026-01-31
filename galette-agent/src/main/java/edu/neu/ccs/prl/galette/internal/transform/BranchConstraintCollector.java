@@ -22,8 +22,11 @@ import org.objectweb.asm.MethodVisitor;
  *
  * <p><b>Design based on Phosphor's PathConstraintTagFactory approach.</b>
  *
- * @author Generated for Galette-Knarr integration
- * @see edu.gmu.swe.knarr.runtime.PathConstraintTagFactory (original Phosphor implementation)
+ * @origin GALETTE_KNARR - New Galette class created to support Knarr/concolic execution.
+ *         This class was added to CocoPath to enable automatic path constraint collection
+ *         at branch points, bridging Galette's taint tracking with Knarr's symbolic execution.
+ *         Based on design patterns from gmu-swe/knarr PathConstraintTagFactory.
+ * @see edu.gmu.swe.knarr.runtime.PathConstraintTagFactory (original Knarr/Phosphor implementation)
  */
 class BranchConstraintCollector extends MethodVisitor {
 

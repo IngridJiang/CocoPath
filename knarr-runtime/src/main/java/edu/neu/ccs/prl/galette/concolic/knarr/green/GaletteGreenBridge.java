@@ -10,13 +10,19 @@ import za.ac.sun.cs.green.expr.*;
 /**
  * Bridge between Galette Tags and Green solver expressions.
  *
- * This class handles the conversion from Galette's taint tracking
+ * <p>This class handles the conversion from Galette's taint tracking
  * to Green solver's symbolic expressions for constraint solving.
- * @purpose Bridge between Galette Tags and Green Expressions
- * @feature Tag-to-Expression conversion
- * @feature Expression-to-Tag conversion
- * @feature Type-aware constraint generation
  *
+ * @origin KNARR_GALETTE - New class integrating Knarr concepts with Galette.
+ *         This class is entirely new, created to bridge the gap between:
+ *         <ul>
+ *           <li>Galette's Tag-based taint tracking (from neu-se/galette)</li>
+ *           <li>Green solver's Expression-based constraint representation (from Knarr)</li>
+ *         </ul>
+ *         The original Knarr stored expressions directly in Phosphor's Taint objects.
+ *         In Galette, Tags store labels (strings) not expressions, so this bridge
+ *         maintains a separate mapping between tag labels and Green expressions.
+ * @see edu.gmu.swe.knarr.runtime.ExpressionTaint Original Knarr approach (stores Expression in Taint)
  */
 public class GaletteGreenBridge {
 

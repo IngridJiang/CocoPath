@@ -28,6 +28,19 @@ import edu.columbia.cs.psl.phosphor.struct.TaintedShortWithObjTag;
 import za.ac.sun.cs.green.expr.*;
 import za.ac.sun.cs.green.expr.Operation.Operator;
 
+/**
+ * Taint listener for array operations with symbolic constraint tracking.
+ *
+ * <p>This class extends Phosphor's DerivedTaintListener to handle array read/write
+ * operations with symbolic constraint collection for concolic execution.
+ *
+ * @origin KNARR_ORIGINAL - Original Knarr class from gmu-swe/knarr.
+ *         This class is unchanged from the original Knarr repository.
+ *         It uses Phosphor's taint tracking infrastructure (edu.columbia.cs.psl.phosphor.*)
+ *         and is kept for reference and compatibility. In CocoPath's Galette-based
+ *         architecture, array tracking is handled by ArraySymbolicTracker instead.
+ * @see edu.neu.ccs.prl.galette.concolic.knarr.runtime.ArraySymbolicTracker Galette equivalent
+ */
 public class TaintListener extends DerivedTaintListener {
 
 	public static IdentityHashMap<Object, LinkedList<ArrayVariable>> arrayNames = new IdentityHashMap<>();

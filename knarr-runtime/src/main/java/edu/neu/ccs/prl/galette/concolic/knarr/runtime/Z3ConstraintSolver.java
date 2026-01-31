@@ -12,13 +12,21 @@ import za.ac.sun.cs.green.service.z3.Z3JavaTranslator;
 /**
  * Z3-based constraint solver for symbolic execution.
  *
- * This solver uses Microsoft Z3 SMT solver to handle complex constraints
- * that the simple range-based solver cannot handle.
+ * <p>This solver uses Microsoft Z3 SMT solver to handle complex constraints
+ * that simple range-based solving cannot handle.
  *
- * @purpose Drop-in replacement for ConstraintSolver using Z3
- * @feature Full SMT constraint solving
- * @feature Automatic fallback to simple solver
- * @feature Configurable timeout
+ * @origin KNARR_GALETTE - New class integrating Knarr concepts with Galette.
+ *         This class replaces the original Knarr server-based solving approach
+ *         with direct Z3 integration. Key differences:
+ *         <ul>
+ *           <li>Uses z3-turnkey Maven dependency for cross-platform Z3 binaries</li>
+ *           <li>In-process solving instead of client-server architecture</li>
+ *           <li>Uses Green library's Z3JavaTranslator for expression conversion</li>
+ *           <li>Supports configurable timeout and fallback to simple solver</li>
+ *         </ul>
+ *         The original Knarr used knarr-server with bundled Z3 binaries and
+ *         socket-based communication between client and constraint server.
+ * @see edu.gmu.swe.knarr.server.ConstraintServer Original Knarr constraint server
  */
 public class Z3ConstraintSolver {
 
