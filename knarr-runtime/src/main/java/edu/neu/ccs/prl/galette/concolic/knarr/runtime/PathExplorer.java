@@ -222,7 +222,7 @@ public class PathExplorer {
             if (value != null) {
                 if (DEBUG)
                     System.out.println(
-                            "[PathExplorer:generateNextInput] Found value under key: " + key + " = " + value);
+                            "[PathExplorer:generateNextInput] Z3 found value under key: " + key + " = " + value);
                 break;
             }
         }
@@ -715,8 +715,8 @@ public class PathExplorer {
             Object value = solution.getValue(key);
             if (value != null) {
                 if (DEBUG) {
-                    System.out.println(
-                            "[PathExplorer:generateNextMultiVarInput] Found value in solution: " + key + " = " + value);
+                    System.out.println("[PathExplorer:generateNextMultiVarInput] Z3 found value in solution: " + key
+                            + " = " + value);
                 }
 
                 if (value instanceof Integer) {
