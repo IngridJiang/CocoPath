@@ -293,43 +293,47 @@ END: Return List<PathRecord> with 5 paths
 
 ## 4. Constraint Collection Timeline (Single Iteration)
 
+**Note**: Constraints are collected **inside the Vitruvius reaction** (CreateAscetTaskRoutine.java),
+not in AutomaticVitruvPathExploration.java. The reaction calls GaletteSymbolicator and
+SymbolicComparison via reflection to register symbolic variables and record constraints.
+
 ```
-Time  Event                          Location                           PC State
-─────────────────────────────────────────────────────────────────────────────────────
-T0    Pass concrete value           PathExplorer:69                    []
+Time  Event                              Location                           PC State
+──────────────────────────────────────────────────────────────────────────────────────────
+T0    Pass concrete value               PathExplorer                       []
       executor.execute(0)  (no tagging yet)
 
-T1    Reset PC                       PathExplorer:71                    []
+T1    Reset PC                          PathExplorer                       []
       PathUtils.getCurPC().clear()
 
-T2    Extract concrete value         AutomaticVitruvPathExploration:89  []
-      concreteValue = (Integer) input  // Just for display
+T2    Create output directory           AutomaticVitruvPathExploration     []
 
-T3    ** Add domain constraint **    AutomaticVitruvPathExploration:88  [(0 <= user_choice < 5)]
-      PathUtils.addIntDomainConstraint("user_choice", 0, 5)
-
-T4    Invoke insertTask             AutomaticVitruvPathExploration:104 [(0 <= user_choice < 5)]
-      insertTask.invoke(testInstance, workDir, taggedInteger)
+T3    Invoke insertTask                 AutomaticVitruvPathExploration     []
+      insertTask.invoke(testInstance, workDir, concreteInteger)
       │
-      └─▶ Test.insertTask(workDir, taggedInteger)
+      └─▶ Test.insertTask(workDir, concreteInteger)
           │
-          ├─ Switch executes: switch (taggedInteger)
-          │  ├─ Concrete: value is 0, goes to case 0
-          │  └─ Symbolic: tag is present on value
-          │     (Automatic constraint collection here would add:
-          │      user_choice == 0, but it's DISABLED)
-          │
-          └─ Vitruvius transformation
-             (Throws exception - ignored)
+          └─▶ Vitruvius VSUM triggers CreateAscetTaskRoutine reaction
+              │
+              ├─ T4: UserInteractor.startInteraction() returns selection
+              │
+              ├─ T5: ** GaletteSymbolicator.getOrMakeSymbolicInt() **
+              │      qualifiedName: "CreateAscetTaskRoutine:execute:userChoice_forTask_..."
+              │      → Creates tag with qualified name
+              │      → Internally adds domain constraint
+              │      PC = [(0 <= var < 5)]
+              │
+              ├─ T6: ** SymbolicComparison.symbolicVitruviusChoice() **
+              │      → Records switch constraint
+              │      PC = [(0 <= var < 5), (var == 0)]
+              │
+              └─ T7: Execute transformation based on selection
 
-T5    ** Add switch constraint **   AutomaticVitruvPathExploration:100 [(0 <= user_choice < 5),
-      PathUtils.addSwitchConstraint("user_choice", 0)                     (user_choice == 0)]
-
-T6    Retrieve PC                   AutomaticVitruvPathExploration:131 [(0 <= user_choice < 5),
-      pc = PathUtils.getCurPC()                                           (user_choice == 0)]
+T8    Retrieve PC                       AutomaticVitruvPathExploration     [(0 <= var < 5),
+      pc = PathUtils.getCurPC()                                             (var == 0)]
       Returns: PathConditionWrapper with 2 constraints
 
-T7    Store in PathRecord           PathExplorer:78
+T9    Store in PathRecord               PathExplorer
       paths.add(new PathRecord(inputs, pc, time))
 ```
 
@@ -491,64 +495,73 @@ Storage:
   - CURRENTLY BROKEN
 ```
 
-### Current Implementation (Manual Fallback - WORKING)
+### Current Implementation (Reaction-Based - WORKING)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ AutomaticVitruvPathExploration.executeVitruvWithInput()     │
 │   ↓                                                           │
-│ PathUtils.addIntDomainConstraint("user_choice", 0, 5)       │
-│   └─ Creates: (0 <= user_choice) AND (user_choice < 5)      │
+│ Test.insertTask(workDir, concreteInteger)                   │
 │   ↓                                                           │
-│ Test.insertTask(workDir, taggedInteger)                     │
-│   └─ switch (taggedInteger) executes                         │
-│       (Tag is present but not used for constraint collection)│
+│ Vitruvius VSUM triggers CreateAscetTaskRoutine reaction     │
 │   ↓                                                           │
-│ PathUtils.addSwitchConstraint("user_choice", 0)             │
-│   └─ Creates: user_choice == 0                               │
+│ CreateAscetTaskRoutine.execute():                            │
+│   │                                                           │
+│   ├─ GaletteSymbolicator.getOrMakeSymbolicInt(...)          │
+│   │   └─ Creates tag + adds domain constraint automatically │
+│   │   └─ Creates: (0 <= var) AND (var < 5)                  │
+│   │                                                           │
+│   └─ SymbolicComparison.symbolicVitruviusChoice(...)        │
+│       └─ Records switch constraint                           │
+│       └─ Creates: var == 0                                   │
 │   ↓                                                           │
-│ PC = [(0 <= user_choice < 5), (user_choice == 0)]           │
+│ PC = [(0 <= var < 5), (var == 0)]                           │
 └──────────────────────────────────────────────────────────────┘
 
 ✅ Pros:
-  - Simple and reliable
-  - No bytecode errors
-  - Easy to debug
-  - Works correctly NOW
+  - Constraint collection in reactions (close to decision point)
+  - Tag reuse across iterations via qualified name
+  - Works reliably with Vitruvius framework
 
 ❌ Cons:
-  - Requires manual code modification
-  - Variable name as string (less precise than tags)
-  - Not fully automatic
+  - Requires reflection calls in reaction code
+  - Reactions must be modified to call GaletteSymbolicator/SymbolicComparison
+  - Not fully automatic (reactions need explicit instrumentation)
 ```
 
-## 7. Key Insight: Why Tags Are Created But Not Fully Used
+## 7. Key Insight: Constraint Collection in Reactions
 
 ```
-Tag Creation (WORKING):
-  PathExplorer → GaletteSymbolicator.tagInteger(value, label)
-  Result: Tagged Integer object with symbolic metadata
+Concrete Value Passed (WORKING):
+  PathExplorer → executor(concreteInteger)
+  Result: Concrete integer passed to execution wrapper
            ↓
-  Tag Propagation (WORKING):
-  Galette shadow stack propagates tag through method calls
+  Test.insertTask Invocation (WORKING):
+  AutomaticVitruvPathExploration invokes Test.insertTask via reflection
            ↓
-  Tag Reception (WORKING):
-  Test.insertTask receives tagged Integer
-  Switch operand has tag attached
+  Vitruvius Reaction Triggered (WORKING):
+  CreateAscetTaskRoutine executes in response to model change
            ↓
-  Automatic Constraint Collection (BROKEN):
-  TagPropagator.visitTableSwitchInsn SHOULD:
-    - Detect tag on switch operand
-    - Extract symbolic expression from tag
-    - Generate constraints automatically
-  BUT: This code is DISABLED due to bytecode errors
+  Tag Creation in Reaction (WORKING):
+  GaletteSymbolicator.getOrMakeSymbolicInt():
+    - Creates tag with qualified name on first iteration
+    - Reuses existing tag on subsequent iterations
+    - Adds domain constraint automatically
            ↓
-  Manual Fallback (WORKING):
-  AutomaticVitruvPathExploration manually adds constraints
-  using variable name strings instead of tags
+  Switch Constraint Recording (WORKING):
+  SymbolicComparison.symbolicVitruviusChoice():
+    - Records switch constraint using tag's qualified name
+           ↓
+  Transformation Executes:
+  Reaction performs model transformation based on selection
+           ↓
+  PC Retrieved:
+  AutomaticVitruvPathExploration retrieves constraints via PathUtils.getCurPC()
 ```
 
-**Conclusion**: The tag infrastructure is fully functional, but the automatic constraint collection from tags is disabled. Manual constraint collection bypasses the tag-based approach and uses string variable names instead.
+**Conclusion**: Constraint collection happens inside Vitruvius reactions (e.g., CreateAscetTaskRoutine.java)
+using GaletteSymbolicator and SymbolicComparison. Tags are created and reused across iterations via
+qualified names. The automatic bytecode-based constraint collection in TagPropagator remains disabled.
 
 ---
 

@@ -182,11 +182,11 @@ switch (userInput) {  // Concrete: goes to case 0
 ```java
 PathUtils.addIntDomainConstraint("user_choice", 0, 5);
 // Creates: (0 <= user_choice) AND (user_choice < 5)
-
+```
 
 **Implementation Location**:
-- **File**: `AutomaticVitruvPathExploration.java`
-- **Line**: 88
+- **File**: `CreateAscetTaskRoutine.java` (generated Vitruvius reaction)
+- **Called via**: `GaletteSymbolicator.getOrMakeSymbolicInt(qualifiedName, value, min, max)` which internally adds domain constraint
 - **API**: `PathUtils.addIntDomainConstraint(String varName, int min, int max)`
 
 **Semantic Meaning**:
@@ -221,8 +221,8 @@ To find Path 2:
 ```
 
 **Implementation Location**:
-- **File**: `AutomaticVitruvPathExploration.java`
-- **Line**: 100
+- **File**: `CreateAscetTaskRoutine.java` (generated Vitruvius reaction)
+- **Called via**: `SymbolicComparison.symbolicVitruviusChoice(taggedValue, min, max)` which records path constraint
 - **API**: `PathUtils.addSwitchConstraint(String varName, int value)`
 
 **Semantic Meaning**:
@@ -369,20 +369,26 @@ PHASE 3: RESULT EXPORT
 ### 4.2 Constraint Collection Timeline (Per Iteration)
 
 ```
-Time  | Location                          | Action
-------|-----------------------------------|------------------------------------------
-T0    | PathExplorer                      | Create tagged Integer (value, symbolic tag)
-T1    | PathExplorer                      | Reset PathConditionWrapper (empty PC)
-T2    | AutomaticVitruvPathExploration    | Extract concrete value (for display only)
-T3    | AutomaticVitruvPathExploration:88 | ** Add domain constraint **
-      |                                   | PC = [(0 <= user_choice < 5)]
-T4    | Test.insertTask()                 | Switch statement executes
-      |                                   | [Automatic constraint collection DISABLED]
-T5    | AutomaticVitruvPathExploration:100| ** Add switch constraint **
-      |                                   | PC = [(0 <= user_choice < 5), user_choice == 0]
-T6    | AutomaticVitruvPathExploration:131| Retrieve PC (2 constraints)
-T7    | PathExplorer                      | Store PC in PathRecord
+Time  | Location                              | Action
+------|---------------------------------------|------------------------------------------
+T0    | PathExplorer                          | Pass concrete value to executor (no tagging yet)
+T1    | PathExplorer                          | Reset PathConditionWrapper (empty PC)
+T2    | AutomaticVitruvPathExploration        | Create output directory, invoke Test.insertTask()
+T3    | Test.insertTask() → Vitruvius VSUM    | Triggers consistency reaction
+T4    | CreateAscetTaskRoutine (reaction)     | UserInteractor returns selection value
+T5    | CreateAscetTaskRoutine (reaction)     | ** Calls GaletteSymbolicator.getOrMakeSymbolicInt() **
+      |                                       | → Creates tag with qualified name
+      |                                       | → Adds domain constraint: PC = [(0 <= var < 5)]
+T6    | CreateAscetTaskRoutine (reaction)     | ** Calls SymbolicComparison.symbolicVitruviusChoice() **
+      |                                       | → Adds path constraint: PC += [var == selected]
+T7    | CreateAscetTaskRoutine (reaction)     | Executes transformation based on selection
+T8    | AutomaticVitruvPathExploration        | Retrieve PC (2 constraints)
+T9    | PathExplorer                          | Store PC in PathRecord
 ```
+
+**Note**: Constraints are collected **inside the Vitruvius reaction** (CreateAscetTaskRoutine.java),
+not in AutomaticVitruvPathExploration.java. The reaction calls GaletteSymbolicator and
+SymbolicComparison via reflection to register symbolic variables and record constraints.
 
 ---
 
@@ -432,9 +438,9 @@ public List<PathRecord> exploreInteger(
 
 | Method | Purpose | Parameters | Usage |
 |--------|---------|------------|-------|
-| `addIntDomainConstraint()` | Add domain constraint | varName, min, max | Line 88 in AutomaticVitruvPathExploration |
-| `addSwitchConstraint()` | Add path constraint for switch | varName, value | Line 100 in AutomaticVitruvPathExploration |
-| `getCurPC()` | Get current path condition | - | Line 131 in AutomaticVitruvPathExploration |
+| `addIntDomainConstraint()` | Add domain constraint | varName, min, max | Called via GaletteSymbolicator in reactions |
+| `addSwitchConstraint()` | Add path constraint for switch | varName, value | Called via SymbolicComparison in reactions |
+| `getCurPC()` | Get current path condition | - | Called in AutomaticVitruvPathExploration to retrieve constraints |
 | `addIntDomainConstraintAuto()` | [AUTO] Domain from tag | tag, min, max | Called by TagPropagator (if enabled) |
 | `recordSwitchConstraintAuto()` | [AUTO] Switch from tag | tag, caseValue | Called by TagPropagator (if enabled) |
 

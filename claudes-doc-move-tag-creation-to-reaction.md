@@ -1,5 +1,27 @@
 ## Plan: Refactor Variable Tagging with Helper Class in templateReaction
 
+> **⚠️ HISTORICAL DOCUMENT - PARTIALLY IMPLEMENTED**
+>
+> **Status**: This plan document was created during development but was **only partially implemented**.
+>
+> **What was implemented**:
+> - ✅ Moving tag creation to reactions (via `GaletteSymbolicator.getOrMakeSymbolicInt()`)
+> - ✅ Constraint recording in reactions (via `SymbolicComparison.symbolicVitruviusChoice()`)
+> - ✅ Reactions call Galette/PathUtils via reflection
+>
+> **What was NOT implemented**:
+> - ❌ `SymbolicExecutionHelper.java` helper class was never created
+> - ❌ The proposed simplified reaction code structure
+> - ❌ The specific file changes described in sections 3-5
+>
+> **Current implementation**: See `CreateAscetTaskRoutine.java` (generated reaction) for actual
+> implementation. Constraints are collected directly in the reaction using reflection calls to
+> `GaletteSymbolicator` and `SymbolicComparison`, without a dedicated helper class.
+>
+> **Last Updated**: January 2025
+
+---
+
 ### Summary
 Create a Java helper class to cleanly separate the three concerns: (1) variable tagging, (2) constraint formulation, and (3) branch tracking. This will make the reaction code cleaner and more maintainable.
 
