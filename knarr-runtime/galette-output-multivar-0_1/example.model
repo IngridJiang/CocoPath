@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="ASCII"?>
-<model2:ComponentContainer xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:model2="http://vitruv.tools/reactionsparser/model2">
-  <tasks name="task1"/>
-  <tasks name="task2"/>
-</model2:ComponentContainer>

@@ -34,11 +34,14 @@
 # ============================================================================
 
 set -e
+_LAST_ERR=""
+trap '_LAST_ERR="line $LINENO: $BASH_COMMAND"' ERR
+trap 'code=$?; if [ $code -ne 0 ]; then echo ""; echo "=== Script exited with error (code $code) ==="; [ -n "$_LAST_ERR" ] && echo "Failed at: $_LAST_ERR"; read -rp "Press Enter to close..."; fi' EXIT
 
 USE_EXTERNAL=false
 USE_MULTIVAR=false
 FORCE_REBUILD=false
-EXTERNAL_PATH="/home/anne/CocoPath/Amalthea-acset"  # <-- MODIFY THIS for your PC
+EXTERNAL_PATH="/c/Users/10239/Amathea-acset"  # <-- MODIFY THIS for your PC
 INTERACTIVE_MODE=true
 
 # ============================================================================
@@ -385,7 +388,13 @@ fi
 
 # Build classpath
 mvn -q -DincludeScope=runtime -Dmdep.outputFile=cp.txt dependency:build-classpath
-CP="target/classes:target/test-classes:$(cat cp.txt)"
+# Use ; as classpath separator on Windows (Git Bash/MSYS), : on Unix
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OS" == "Windows_NT" ]]; then
+    CP_SEP=";"
+else
+    CP_SEP=":"
+fi
+CP="target/classes${CP_SEP}target/test-classes${CP_SEP}$(cat cp.txt)"
 
 echo "      Using instrumented JVM with Galette agent"
 set +e
