@@ -369,4 +369,48 @@ public class SymbolicComparison {
         System.out.println("[SymbolicComparison:symbolicVitruviusChoice]   - Returning: " + selected);
         return selected;
     }
+
+    /**
+     * Records an if-comparison constraint for a symbolic integer value.
+     *
+     * <p>Reads the variable name from the taint tag on {@code symbolicValue} (exactly as
+     * {@link #symbolicVitruviusChoice} does for switch statements) and records the interval
+     * comparison via {@link PathUtils#addIfComparisonConstraint}.
+     *
+     * <p>Call once per comparison arm that was taken, e.g.:
+     * <pre>
+     *   if (v &lt; 34) {
+     *       symbolicVitruviusIfComparison(v, "GE", 0);
+     *       symbolicVitruviusIfComparison(v, "LT", 34);
+     *   } else if (v &lt; 67) {
+     *       symbolicVitruviusIfComparison(v, "GE", 34);
+     *       symbolicVitruviusIfComparison(v, "LT", 67);
+     *   } else {
+     *       symbolicVitruviusIfComparison(v, "GE", 67);
+     *   }
+     * </pre>
+     *
+     * @param symbolicValue the tagged symbolic integer returned by
+     *                      {@code GaletteSymbolicator.getOrMakeSymbolicInt}
+     * @param op            comparison operator string: "LT", "GE", "LE", "GT", "EQ", "NE"
+     * @param threshold     the integer threshold being compared against
+     */
+    public static void symbolicVitruviusIfComparison(Integer symbolicValue, String op, int threshold) {
+        if (symbolicValue == null) return;
+        try {
+            Tag tag = edu.neu.ccs.prl.galette.internal.runtime.Tainter.getTag(symbolicValue);
+            if (tag != null && !tag.isEmpty()) {
+                String qualifiedName = tag.getLabels()[0].toString();
+                PathUtils.addIfComparisonConstraint(qualifiedName, op, threshold);
+                System.out.println("[SymbolicComparison:symbolicVitruviusIfComparison] Recorded: " + qualifiedName + " "
+                        + op + " " + threshold);
+            } else {
+                System.out.println("[SymbolicComparison:symbolicVitruviusIfComparison] No tag on value " + symbolicValue
+                        + " — constraint not recorded");
+            }
+        } catch (Exception e) {
+            System.out.println("[SymbolicComparison:symbolicVitruviusIfComparison] Exception: "
+                    + e.getClass().getName() + ": " + e.getMessage());
+        }
+    }
 }

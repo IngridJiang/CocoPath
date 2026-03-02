@@ -14,6 +14,8 @@ REM   run-symbolic-execution-adapted.bat              # Interactive mode (prompt
 REM   run-symbolic-execution-adapted.bat internal     # Single-variable mode (5 paths, simplified)
 REM   run-symbolic-execution-adapted.bat external     # Single-variable mode (5 paths, full Vitruvius)
 REM   run-symbolic-execution-adapted.bat multivar     # Multi-variable mode (25 paths, full Vitruvius)
+REM   run-symbolic-execution-adapted.bat brake        # TinyBrake single-disc (2 vars)
+REM   run-symbolic-execution-adapted.bat brake-multivar  # TinyBrake two-disc (4 vars)
 REM
 REM ============================================================================
 REM CONFIGURATION - Modify this section for your PC
@@ -39,6 +41,8 @@ setlocal enabledelayedexpansion
 
 set "USE_EXTERNAL=false"
 set "USE_MULTIVAR=false"
+set "USE_BRAKE=false"
+set "USE_BRAKE_MULTIVAR=false"
 set "EXTERNAL_PATH=C:\Users\10239\Amathea-acset"
 REM                  ^^^^^^^^^^^ MODIFY THIS for your PC ^^^^^^^^^^^
 set "INTERACTIVE_MODE=true"
@@ -59,6 +63,16 @@ if /i "%~1"=="external" (
 if /i "%~1"=="multivar" (
     set "USE_EXTERNAL=true"
     set "USE_MULTIVAR=true"
+    set "INTERACTIVE_MODE=false"
+)
+if /i "%~1"=="brake" (
+    set "USE_BRAKE=true"
+    set "USE_BRAKE_MULTIVAR=false"
+    set "INTERACTIVE_MODE=false"
+)
+if /i "%~1"=="brake-multivar" (
+    set "USE_BRAKE=true"
+    set "USE_BRAKE_MULTIVAR=true"
     set "INTERACTIVE_MODE=false"
 )
 
@@ -99,25 +113,47 @@ if "%INTERACTIVE_MODE%"=="true" (
     echo      - Explores: 25 paths ^(5 x 5 combinations^)
     echo      - Requires external Amalthea-acset repository
     echo.
-    set /p choice="Enter your choice (1, 2, or 3): "
+    echo   4^) BRAKE MODE ^(TinyBrakeVSUM - single disc, 2 symbolic variables^)
+    echo      - Output: BrakeSystem/ControlSystem XMI models
+    echo      - Explores: up to 10 paths ^(4 profile intervals x 3 calib intervals; skip has no calib^)
+    echo      - Uses tinybrake-integration module ^(no external repo needed^)
+    echo.
+    echo   5^) BRAKE MULTI-VARIABLE MODE ^(TinyBrakeVSUM - two discs, 4 symbolic variables^)
+    echo      - Output: BrakeSystem/ControlSystem XMI models
+    echo      - Explores: 81 paths ^(3^4: 3 profiles x 3 calibs per disc, 2 discs; skip excluded by initial [0,0,0,0]^)
+    echo      - Uses tinybrake-integration module ^(no external repo needed^)
+    echo.
+    set /p choice="Enter your choice (1-5): "
     echo.
 
     if "!choice!"=="1" (
         set "USE_EXTERNAL=false"
         set "USE_MULTIVAR=false"
+        set "USE_BRAKE=false"
         echo Selected: INTERNAL MODE ^(single variable^)
     ) else if "!choice!"=="2" (
         set "USE_EXTERNAL=true"
         set "USE_MULTIVAR=false"
+        set "USE_BRAKE=false"
         echo Selected: EXTERNAL MODE ^(single variable^)
     ) else if "!choice!"=="3" (
         set "USE_EXTERNAL=true"
         set "USE_MULTIVAR=true"
+        set "USE_BRAKE=false"
         echo Selected: MULTI-VARIABLE MODE ^(two variables, 25 paths^)
+    ) else if "!choice!"=="4" (
+        set "USE_BRAKE=true"
+        set "USE_BRAKE_MULTIVAR=false"
+        echo Selected: BRAKE MODE ^(single disc, 2 variables^)
+    ) else if "!choice!"=="5" (
+        set "USE_BRAKE=true"
+        set "USE_BRAKE_MULTIVAR=true"
+        echo Selected: BRAKE MULTI-VARIABLE MODE ^(two discs, 4 variables^)
     ) else (
         echo Invalid choice. Defaulting to INTERNAL MODE.
         set "USE_EXTERNAL=false"
         set "USE_MULTIVAR=false"
+        set "USE_BRAKE=false"
     )
     echo.
 )
@@ -125,7 +161,44 @@ if "%INTERACTIVE_MODE%"=="true" (
 echo ================================================================================
 echo.
 
-if "%USE_EXTERNAL%"=="true" (
+if "%USE_BRAKE%"=="true" (
+    echo Mode: BRAKE ^(switching to tinybrake-integration^)
+    echo.
+
+    REM Clean Maven cache for tinybrake to avoid stale JARs
+    echo       Cleaning Maven repository cache...
+    if exist "%USERPROFILE%\.m2\repository\edu\neu\ccs\prl\galette\tinybrake-integration-consistency\1.0.0-SNAPSHOT" (
+        rmdir /s /q "%USERPROFILE%\.m2\repository\edu\neu\ccs\prl\galette\tinybrake-integration-consistency\1.0.0-SNAPSHOT" 2>nul
+    )
+    if exist "%USERPROFILE%\.m2\repository\edu\neu\ccs\prl\galette\tinybrake-integration-vsum\1.0.0-SNAPSHOT" (
+        rmdir /s /q "%USERPROFILE%\.m2\repository\edu\neu\ccs\prl\galette\tinybrake-integration-vsum\1.0.0-SNAPSHOT" 2>nul
+    )
+    echo       Removed cached tinybrake JARs
+    echo.
+
+    echo [1/4] Switching pom.xml to brake dependency...
+    python switch-dependency.py brake pom.xml
+    if errorlevel 1 (
+        echo ERROR: Failed to switch to brake dependency
+        exit /b 1
+    )
+    echo       Switched to brake dependency.
+    echo.
+
+    echo [2/4] Building tinybrake-integration...
+    pushd "..\tinybrake-integration"
+    call mvn clean install -DskipTests -Dcheckstyle.skip=true
+    if errorlevel 1 (
+        echo ERROR: Failed to build tinybrake-integration
+        popd
+        exit /b 1
+    )
+    popd
+    echo       Done.
+    echo.
+
+    set "STEP_OFFSET=2"
+) else if "%USE_EXTERNAL%"=="true" (
     echo Mode: EXTERNAL ^(switching to external Amalthea-acset^)
     echo.
 
@@ -240,7 +313,15 @@ echo [%STEP2%/%TOTAL_STEPS%] Running symbolic execution...
 echo       With semi-automatic constraint collection in reaction
 
 REM Determine which main class to use
-if "%USE_MULTIVAR%"=="true" (
+if "%USE_BRAKE%"=="true" (
+    if "%USE_BRAKE_MULTIVAR%"=="true" (
+        set "MAIN_CLASS=edu.neu.ccs.prl.galette.vitruvius.AutomaticBrakeMultiVarPathExploration"
+        echo       Main class: AutomaticBrakeMultiVarPathExploration ^(brake two-disc^)
+    ) else (
+        set "MAIN_CLASS=edu.neu.ccs.prl.galette.vitruvius.AutomaticBrakePathExploration"
+        echo       Main class: AutomaticBrakePathExploration ^(brake single-disc^)
+    )
+) else if "%USE_MULTIVAR%"=="true" (
     set "MAIN_CLASS=edu.neu.ccs.prl.galette.vitruvius.AutomaticVitruvMultiVarPathExploration"
     echo       Main class: AutomaticVitruvMultiVarPathExploration ^(multi-variable^)
 ) else (
@@ -276,12 +357,19 @@ set /p CP_DEPS=<cp.txt
 set "CP=target\classes;target\test-classes;%CP_DEPS%"
 
 echo       Using instrumented JVM with Galette agent
+
+REM No extra JVM flags needed: constraint recording for brake modes uses explicit
+REM PathUtils.addIfComparisonConstraint calls in the reactions, so TagPropagator
+REM branch instrumentation is not required.
+set "SYMBOLIC_FLAG="
+
 "%INSTRUMENTED_JAVA%\bin\java.exe" ^
     -cp "%CP%" ^
     -Xbootclasspath/a:"%GALETTE_AGENT%" ^
     -javaagent:"%GALETTE_AGENT%" ^
     -Dgalette.cache=target/galette/cache ^
-    -Dpath.explorer.max.iterations=30 ^
+    -Dpath.explorer.max.iterations=200 ^
+    %SYMBOLIC_FLAG% ^
     %MAIN_CLASS%
 set "EXEC_EXIT=%ERRORLEVEL%"
 
@@ -299,7 +387,19 @@ if exist pom.xml.bak (
     echo       Done.
 )
 
-if not exist execution_paths_automatic.json (
+if "%USE_BRAKE%"=="true" (
+    if "%USE_BRAKE_MULTIVAR%"=="true" (
+        set "EXPECTED_JSON=execution_paths_brake_multivar.json"
+    ) else (
+        set "EXPECTED_JSON=execution_paths_brake.json"
+    )
+) else if "%USE_MULTIVAR%"=="true" (
+    set "EXPECTED_JSON=execution_paths_multivar.json"
+) else (
+    set "EXPECTED_JSON=execution_paths_automatic.json"
+)
+
+if not exist "%EXPECTED_JSON%" (
     if not "%EXEC_EXIT%"=="0" (
         echo.
         echo ERROR: Symbolic execution failed!
@@ -312,7 +412,19 @@ echo ===========================================================================
 echo Completed.
 echo ================================================================================
 echo.
-if "%USE_MULTIVAR%"=="true" (
+if "%USE_BRAKE%"=="true" (
+    if "%USE_BRAKE_MULTIVAR%"=="true" (
+        echo Generated files:
+        echo   - execution_paths_brake_multivar.json  ^(Path exploration results^)
+        echo   - galette-output-brake-multivar-*/     ^(Model outputs per path combination^)
+        echo.
+    ) else (
+        echo Generated files:
+        echo   - execution_paths_brake.json           ^(Path exploration results^)
+        echo   - galette-output-brake-*/              ^(Model outputs per path^)
+        echo.
+    )
+) else if "%USE_MULTIVAR%"=="true" (
     echo Generated files:
     echo   - execution_paths_multivar.json       ^(Path exploration results^)
     echo   - galette-output-multivar-*/          ^(Model outputs per path combination^)

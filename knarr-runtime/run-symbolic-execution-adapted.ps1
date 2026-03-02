@@ -13,6 +13,8 @@
 #   .\run-symbolic-execution-adapted.ps1 -Internal          # Single-variable mode (5 paths, simplified)
 #   .\run-symbolic-execution-adapted.ps1 -UseExternal       # Single-variable mode (5 paths, full Vitruvius)
 #   .\run-symbolic-execution-adapted.ps1 -MultiVar          # Multi-variable mode (25 paths, full Vitruvius)
+#   .\run-symbolic-execution-adapted.ps1 -Brake             # TinyBrake single-disc (2 vars)
+#   .\run-symbolic-execution-adapted.ps1 -BrakeMultiVar     # TinyBrake two-disc (4 vars)
 #   .\run-symbolic-execution-adapted.ps1 -ForceRebuild      # Force rebuild even if sources unchanged
 #
 # Or specify custom path:
@@ -30,6 +32,8 @@ param(
     [switch]$UseExternal = $false,
     [switch]$Internal = $false,
     [switch]$MultiVar = $false,
+    [switch]$Brake = $false,
+    [switch]$BrakeMultiVar = $false,
     [switch]$ForceRebuild = $false,
     [string]$ExternalPath = "C:\Users\10239\Amathea-acset",  # <-- MODIFY THIS for your PC
     [string]$JavaHomeOverride = ""  # <-- Set to Java 17 path if needed, e.g. "C:\Program Files\Eclipse Adoptium\jdk-17.0.x-hotspot"
@@ -79,7 +83,7 @@ if (-not [string]::IsNullOrEmpty($JavaHomeOverride) -and (Test-Path "$JavaHomeOv
     Write-Host ""
 }
 
-$INTERACTIVE_MODE = (-not $UseExternal) -and (-not $Internal) -and (-not $MultiVar)
+$INTERACTIVE_MODE = (-not $UseExternal) -and (-not $Internal) -and (-not $MultiVar) -and (-not $Brake) -and (-not $BrakeMultiVar)
 
 Write-Host "================================================================================" -ForegroundColor Cyan
 Write-Host "CocoPath" -ForegroundColor Cyan
@@ -105,29 +109,53 @@ if ($INTERACTIVE_MODE) {
     Write-Host "     - Explores: 25 paths (5 x 5 combinations)" -ForegroundColor Gray
     Write-Host "     - Requires external Amalthea-acset repository" -ForegroundColor Gray
     Write-Host ""
-    $choice = Read-Host "Enter your choice (1, 2, or 3)"
+    Write-Host "  4) BRAKE MODE (TinyBrakeVSUM - single disc, 2 symbolic variables)" -ForegroundColor Cyan
+    Write-Host "     - Output: BrakeSystem/ControlSystem XMI models" -ForegroundColor Gray
+    Write-Host "     - Explores: up to 10 paths (4 profile intervals x 3 calib intervals; skip has no calib)" -ForegroundColor Gray
+    Write-Host "     - Uses tinybrake-integration module (no external repo needed)" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  5) BRAKE MULTI-VARIABLE MODE (TinyBrakeVSUM - two discs, 4 symbolic variables)" -ForegroundColor Cyan
+    Write-Host "     - Output: BrakeSystem/ControlSystem XMI models" -ForegroundColor Gray
+    Write-Host "     - Explores: 81 paths (3^4: 3 profiles x 3 calibs per disc, 2 discs; skip excluded by initial [0,0,0,0])" -ForegroundColor Gray
+    Write-Host "     - Uses tinybrake-integration module (no external repo needed)" -ForegroundColor Gray
+    Write-Host ""
+    $choice = Read-Host "Enter your choice (1-5)"
     Write-Host ""
 
     switch ($choice) {
         "1" {
             $UseExternal = $false
             $MultiVar = $false
+            $Brake = $false
             Write-Host "Selected: INTERNAL MODE (single variable)" -ForegroundColor Green
         }
         "2" {
             $UseExternal = $true
             $MultiVar = $false
+            $Brake = $false
             Write-Host "Selected: EXTERNAL MODE (single variable)" -ForegroundColor Yellow
         }
         "3" {
             $UseExternal = $true
             $MultiVar = $true
+            $Brake = $false
             Write-Host "Selected: MULTI-VARIABLE MODE (two variables, 25 paths)" -ForegroundColor Magenta
+        }
+        "4" {
+            $Brake = $true
+            $BrakeMultiVar = $false
+            Write-Host "Selected: BRAKE MODE (single disc, 2 variables)" -ForegroundColor Cyan
+        }
+        "5" {
+            $Brake = $true
+            $BrakeMultiVar = $true
+            Write-Host "Selected: BRAKE MULTI-VARIABLE MODE (two discs, 4 variables)" -ForegroundColor Cyan
         }
         default {
             Write-Host "Invalid choice. Defaulting to INTERNAL MODE." -ForegroundColor Yellow
             $UseExternal = $false
             $MultiVar = $false
+            $Brake = $false
         }
     }
     Write-Host ""
@@ -159,7 +187,65 @@ function Test-SourcesChanged {
     return $newestSource -gt $targetTime
 }
 
-if ($UseExternal) {
+if ($Brake) {
+    Write-Host "Mode: BRAKE (switching to tinybrake-integration)" -ForegroundColor Cyan
+    Write-Host ""
+
+    # Find Python
+    $pythonCmd = $null
+    if (Get-Command python.exe -ErrorAction SilentlyContinue) { $pythonCmd = "python.exe" }
+    elseif (Get-Command python3 -ErrorAction SilentlyContinue) { $pythonCmd = "python3" }
+    elseif (Get-Command python -ErrorAction SilentlyContinue) { $pythonCmd = "python" }
+    else {
+        Write-Host "ERROR: Python not found. Cannot switch dependencies." -ForegroundColor Red
+        exit 1
+    }
+
+    # Clean Maven cache for tinybrake to avoid stale JARs
+    Write-Host "      Cleaning Maven repository cache..." -ForegroundColor Gray
+    Remove-Item "$env:USERPROFILE\.m2\repository\edu\neu\ccs\prl\galette\tinybrake-integration-consistency\1.0.0-SNAPSHOT" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item "$env:USERPROFILE\.m2\repository\edu\neu\ccs\prl\galette\tinybrake-integration-vsum\1.0.0-SNAPSHOT" -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "      Removed cached tinybrake JARs" -ForegroundColor Gray
+    Write-Host ""
+
+    Write-Host "[1/4] Switching pom.xml to brake dependency..." -ForegroundColor Yellow
+    & $pythonCmd switch-dependency.py brake pom.xml
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to switch to brake dependency" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "      Switched to brake dependency." -ForegroundColor Green
+    Write-Host ""
+
+    # Build tinybrake-integration module
+    $brakeDir = Join-Path (Split-Path $scriptDir -Parent) "tinybrake-integration"
+    if ($ForceRebuild) {
+        Write-Host "[2/4] Building tinybrake-integration (-ForceRebuild flag set)..." -ForegroundColor Yellow
+        Push-Location $brakeDir
+        mvn clean install -DskipTests -Dcheckstyle.skip=true
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: Failed to build tinybrake-integration" -ForegroundColor Red
+            Pop-Location; exit 1
+        }
+        Pop-Location
+    } elseif (Test-SourcesChanged $brakeDir) {
+        Write-Host "[2/4] Building tinybrake-integration (sources have changed)..." -ForegroundColor Yellow
+        Push-Location $brakeDir
+        mvn clean install -DskipTests -Dcheckstyle.skip=true
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: Failed to build tinybrake-integration" -ForegroundColor Red
+            Pop-Location; exit 1
+        }
+        Pop-Location
+    } else {
+        Write-Host "[2/4] Skipping tinybrake-integration build (sources unchanged)..." -ForegroundColor Yellow
+    }
+    Write-Host "      Done." -ForegroundColor Green
+    Write-Host ""
+
+    $stepOffset = 2
+
+} elseif ($UseExternal) {
     Write-Host "Mode: EXTERNAL (switching to external Amalthea-acset)" -ForegroundColor Yellow
     Write-Host ""
 
@@ -329,7 +415,13 @@ Write-Host "[$step2/$totalSteps] Running symbolic execution..." -ForegroundColor
 Write-Host "      With semi-automatic constraint collection in reaction" -ForegroundColor Gray
 
 # Determine which main class to use
-if ($MultiVar) {
+if ($Brake -and $BrakeMultiVar) {
+    $mainClass = "edu.neu.ccs.prl.galette.vitruvius.AutomaticBrakeMultiVarPathExploration"
+    Write-Host "      Main class: AutomaticBrakeMultiVarPathExploration (brake two-disc)" -ForegroundColor Gray
+} elseif ($Brake) {
+    $mainClass = "edu.neu.ccs.prl.galette.vitruvius.AutomaticBrakePathExploration"
+    Write-Host "      Main class: AutomaticBrakePathExploration (brake single-disc)" -ForegroundColor Gray
+} elseif ($MultiVar) {
     $mainClass = "edu.neu.ccs.prl.galette.vitruvius.AutomaticVitruvMultiVarPathExploration"
     Write-Host "      Main class: AutomaticVitruvMultiVarPathExploration (multi-variable)" -ForegroundColor Gray
 } else {
@@ -364,6 +456,12 @@ mvn -q "-DincludeScope=runtime" "-Dmdep.outputFile=cp.txt" dependency:build-clas
 $cp = "target\classes;target\test-classes;" + (Get-Content "cp.txt" -Raw).Trim()
 
 Write-Host "      Using instrumented JVM with Galette agent" -ForegroundColor Gray
+
+# No extra JVM flags needed: constraint recording for brake modes uses explicit
+# PathUtils.addIfComparisonConstraint calls in the reactions, so TagPropagator
+# branch instrumentation is not required.
+$javaExtraArgs = @()
+
 $mvnSuccess = $true
 try {
     & "$instrumentedJava\bin\java.exe" `
@@ -371,7 +469,8 @@ try {
         "-Xbootclasspath/a:$galetteAgent" `
         "-javaagent:$galetteAgent" `
         "-Dgalette.cache=target/galette/cache" `
-        "-Dpath.explorer.max.iterations=30" `
+        "-Dpath.explorer.max.iterations=200" `
+        @javaExtraArgs `
         $mainClass
     if ($LASTEXITCODE -ne 0) {
         $mvnSuccess = $false
@@ -393,7 +492,12 @@ if (Test-Path "pom.xml.bak") {
     Write-Host "      Done." -ForegroundColor Green
 }
 
-if (-not (Test-Path "execution_paths_automatic.json")) {
+$expectedJson = if ($Brake -and $BrakeMultiVar) { "execution_paths_brake_multivar.json" }
+               elseif ($Brake) { "execution_paths_brake.json" }
+               elseif ($MultiVar) { "execution_paths_multivar.json" }
+               else { "execution_paths_automatic.json" }
+
+if (-not (Test-Path $expectedJson)) {
     if (-not $mvnSuccess) {
         Write-Host ""
         Write-Host "ERROR: Symbolic execution failed!" -ForegroundColor Red
@@ -406,7 +510,17 @@ Write-Host "====================================================================
 Write-Host "Completed." -ForegroundColor Green
 Write-Host "================================================================================" -ForegroundColor Green
 Write-Host ""
-if ($MultiVar) {
+if ($Brake -and $BrakeMultiVar) {
+    Write-Host "Generated files:" -ForegroundColor Cyan
+    Write-Host "  - execution_paths_brake_multivar.json  (Path exploration results)" -ForegroundColor White
+    Write-Host "  - galette-output-brake-multivar-*/     (Model outputs per path combination)" -ForegroundColor White
+    Write-Host ""
+} elseif ($Brake) {
+    Write-Host "Generated files:" -ForegroundColor Cyan
+    Write-Host "  - execution_paths_brake.json           (Path exploration results)" -ForegroundColor White
+    Write-Host "  - galette-output-brake-*/              (Model outputs per path)" -ForegroundColor White
+    Write-Host ""
+} elseif ($MultiVar) {
     Write-Host "Generated files:" -ForegroundColor Cyan
     Write-Host "  - execution_paths_multivar.json       (Path exploration results)" -ForegroundColor White
     Write-Host "  - galette-output-multivar-*/          (Model outputs per path combination)" -ForegroundColor White

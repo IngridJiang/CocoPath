@@ -33,7 +33,7 @@ public class Test {
      * Single-variable version: Insert one task with one user choice.
      * Used for single-variable path exploration (5 paths).
      */
-    public void insertTask(Path projectDir, Integer userInput) {
+    public void insertTask(Path projectDir, int userInput) {
         // 1)
         // Execute switch with tagged value to collect path constraints
         switch (userInput) {

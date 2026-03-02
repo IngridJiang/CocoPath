@@ -46,6 +46,7 @@
         <module>galette-integration-tests</module>
         <module>knarr-runtime</module>
         <module>amalthea-acset-integration</module>
+        <module>tinybrake-integration</module>
     </modules>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

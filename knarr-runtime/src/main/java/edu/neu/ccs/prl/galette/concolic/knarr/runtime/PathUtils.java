@@ -291,6 +291,64 @@ public class PathUtils {
     // Use addIntDomainConstraint(String varName, int min, int max) for manual collection.
 
     /**
+     * Add an if-comparison constraint for the current path.
+     *
+     * <p>Records the branch taken by an if-comparison of the form {@code var op threshold} where
+     * {@code op} is one of {@code "LT"}, {@code "LE"}, {@code "GT"}, {@code "GE"}, {@code "EQ"},
+     * or {@code "NE"}.  Used by Vitruvius reactions to manually register interval constraints that
+     * the Galette bytecode agent cannot capture automatically.
+     *
+     * <p>Example: for the off-road branch ({@code profileChoice < 34}), call
+     * {@code addIfComparisonConstraint("profileChoice", "LT", 34)}.
+     *
+     * @param varName   qualified variable name (must match the name used in
+     *                  {@link #addIntDomainConstraint})
+     * @param op        comparison operator string: "LT", "LE", "GT", "GE", "EQ", or "NE"
+     * @param threshold the constant on the right-hand side of the comparison
+     */
+    public static void addIfComparisonConstraint(String varName, String op, int threshold) {
+        try {
+            IntVariable var = new IntVariable(varName, Integer.MIN_VALUE, Integer.MAX_VALUE);
+            IntConstant threshConst = new IntConstant(threshold);
+
+            Operator operator;
+            switch (op) {
+                case "LT":
+                    operator = Operator.LT;
+                    break;
+                case "LE":
+                    operator = Operator.LE;
+                    break;
+                case "GT":
+                    operator = Operator.GT;
+                    break;
+                case "GE":
+                    operator = Operator.GE;
+                    break;
+                case "EQ":
+                    operator = Operator.EQ;
+                    break;
+                case "NE":
+                    operator = Operator.NE;
+                    break;
+                default:
+                    System.err.println("[PathUtils:addIfComparisonConstraint] Unknown operator: " + op);
+                    return;
+            }
+
+            Expression constraint = new BinaryOperation(operator, var, threshConst);
+            getCurPC().addConstraint(constraint);
+
+            if (GaletteSymbolicator.DEBUG) {
+                System.out.println("[PathUtils:addIfComparisonConstraint] Added: " + varName + " " + op + " "
+                        + threshold + " → " + constraint);
+            }
+        } catch (Exception e) {
+            System.err.println("[PathUtils:addIfComparisonConstraint] Failed: " + e.getMessage());
+        }
+    }
+
+    /**
      * Add a switch/case constraint for current path.
      * This records that the variable equals the specific value taken in this execution.
      *
@@ -486,6 +544,203 @@ public class PathUtils {
                 return branchTaken ? Operator.GT : Operator.LE;
             case 158: // IFLE
                 return branchTaken ? Operator.LE : Operator.GT;
+            default:
+                return null;
+        }
+    }
+
+    // ===== Value-based branch constraint recording (bytecode instrumentation) =====
+
+    /**
+     * ThreadLocal storage for two integer values before a two-value branch instruction.
+     * Populated by {@link #storeTwoValues(int, int)} emitted by bytecode instrumentation.
+     */
+    private static final ThreadLocal<int[]> twoValueBranchStore = ThreadLocal.withInitial(() -> new int[2]);
+
+    /**
+     * Store two operand values before a two-value branch for later constraint recording.
+     * Called from bytecode instrumentation (emitted by TagPropagator) before IF_ICMP* instructions.
+     *
+     * @param v1 left operand (typically the symbolic variable's concrete value)
+     * @param v2 right operand (typically the concrete threshold constant)
+     */
+    public static void storeTwoValues(int v1, int v2) {
+        int[] arr = twoValueBranchStore.get();
+        arr[0] = v1;
+        arr[1] = v2;
+    }
+
+    /**
+     * Record a branch constraint from the previously stored two-value comparison.
+     * Called from bytecode instrumentation after {@link #storeTwoValues(int, int)}.
+     * Uses value-based tag lookup (since Tainter.setTag for primitive ints is a stub).
+     *
+     * @param opcode     the IF_ICMP* bytecode opcode
+     * @param branchTaken true if the branch was taken
+     */
+    public static void recordStoredTwoValueBranchConstraint(int opcode, boolean branchTaken) {
+        int[] arr = twoValueBranchStore.get();
+        int v1 = arr[0]; // left operand — the symbolic variable's concrete value
+        int v2 = arr[1]; // right operand — the concrete threshold
+
+        Tag tag = GaletteSymbolicator.getTagForValue(Integer.valueOf(v1));
+        if (tag == null) {
+            return;
+        }
+        Expression varExpr = GaletteSymbolicator.getExpressionForTag(tag);
+        if (varExpr == null) {
+            return;
+        }
+        Operator op = getTwoValueOperatorForOpcode(opcode, branchTaken);
+        if (op == null) {
+            return;
+        }
+        Expression constraint = new BinaryOperation(op, varExpr, new IntConstant(v2));
+        getCurPC().addConstraint(constraint);
+
+        if (GaletteSymbolicator.DEBUG) {
+            System.out.println("[PathUtils:recordStoredTwoValueBranchConstraint] Recorded: "
+                    + varExpr + " " + op + " " + v2
+                    + " (opcode=" + opcode + ", taken=" + branchTaken + ")");
+        }
+    }
+
+    /**
+     * Record a branch constraint for a single-value branch (IFEQ/IFLT/IFGE etc.) using
+     * value-based tag lookup.  The comparison is always against 0 (implied by single-value
+     * branch opcodes).  Called from bytecode instrumentation emitted by TagPropagator.
+     *
+     * @param concreteValue the concrete int value that was tested
+     * @param opcode        the single-value branch opcode (IFEQ=153 … IFLE=158)
+     * @param branchTaken   true if the branch was taken
+     */
+    public static void recordBranchConstraintFromValue(int concreteValue, int opcode, boolean branchTaken) {
+        Tag tag = GaletteSymbolicator.getTagForValue(Integer.valueOf(concreteValue));
+        if (tag == null) {
+            return;
+        }
+        Expression varExpr = GaletteSymbolicator.getExpressionForTag(tag);
+        if (varExpr == null) {
+            return;
+        }
+        Operator op = getOperatorForBranchOpcode(opcode, branchTaken);
+        if (op == null) {
+            return;
+        }
+        Expression constraint = new BinaryOperation(op, varExpr, new IntConstant(0));
+        getCurPC().addConstraint(constraint);
+
+        if (GaletteSymbolicator.DEBUG) {
+            System.out.println("[PathUtils:recordBranchConstraintFromValue] Recorded: "
+                    + varExpr + " " + op + " 0"
+                    + " (opcode=" + opcode + ", taken=" + branchTaken + ")");
+        }
+    }
+
+    /**
+     * Test the single-value branch condition and record the constraint if the value is symbolic.
+     * Called from bytecode instrumentation emitted by TagPropagator — no GOTO labels needed.
+     *
+     * @param value  the concrete int value tested by the branch
+     * @param opcode the single-value branch opcode (IFEQ=153 .. IFLE=158)
+     */
+    public static void testAndRecordSingleValueBranch(int value, int opcode) {
+        boolean taken = testSingleValueCondition(value, opcode);
+        Tag tag = GaletteSymbolicator.getTagForValue(Integer.valueOf(value));
+        if (tag == null) return;
+        Expression varExpr = GaletteSymbolicator.getExpressionForTag(tag);
+        if (varExpr == null) return;
+        Operator op = getOperatorForBranchOpcode(opcode, taken);
+        if (op == null) return;
+        getCurPC().addConstraint(new BinaryOperation(op, varExpr, new IntConstant(0)));
+        if (GaletteSymbolicator.DEBUG) {
+            System.out.println("[PathUtils:testAndRecordSingleValueBranch] Recorded: " + varExpr + " " + op
+                    + " 0 (opcode=" + opcode + ", taken=" + taken + ")");
+        }
+    }
+
+    private static boolean testSingleValueCondition(int value, int opcode) {
+        switch (opcode) {
+            case 153:
+                return value == 0; // IFEQ
+            case 154:
+                return value != 0; // IFNE
+            case 155:
+                return value < 0; // IFLT
+            case 156:
+                return value >= 0; // IFGE
+            case 157:
+                return value > 0; // IFGT
+            case 158:
+                return value <= 0; // IFLE
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * Test the two-value branch condition and record the constraint if v1 is symbolic.
+     * Called from bytecode instrumentation emitted by TagPropagator — no GOTO labels needed.
+     *
+     * @param v1     left operand (the symbolic variable's concrete value)
+     * @param v2     right operand (the concrete threshold)
+     * @param opcode the IF_ICMP* opcode (IF_ICMPEQ=159 .. IF_ICMPLE=164)
+     */
+    public static void testAndRecordTwoValueBranch(int v1, int v2, int opcode) {
+        boolean taken = testTwoValueCondition(v1, v2, opcode);
+        Tag tag = GaletteSymbolicator.getTagForValue(Integer.valueOf(v1));
+        if (tag == null) return;
+        Expression varExpr = GaletteSymbolicator.getExpressionForTag(tag);
+        if (varExpr == null) return;
+        Operator op = getTwoValueOperatorForOpcode(opcode, taken);
+        if (op == null) return;
+        getCurPC().addConstraint(new BinaryOperation(op, varExpr, new IntConstant(v2)));
+        if (GaletteSymbolicator.DEBUG) {
+            System.out.println("[PathUtils:testAndRecordTwoValueBranch] Recorded: " + varExpr + " " + op + " " + v2
+                    + " (opcode=" + opcode + ", taken=" + taken + ")");
+        }
+    }
+
+    private static boolean testTwoValueCondition(int v1, int v2, int opcode) {
+        switch (opcode) {
+            case 159:
+                return v1 == v2; // IF_ICMPEQ
+            case 160:
+                return v1 != v2; // IF_ICMPNE
+            case 161:
+                return v1 < v2; // IF_ICMPLT
+            case 162:
+                return v1 >= v2; // IF_ICMPGE
+            case 163:
+                return v1 > v2; // IF_ICMPGT
+            case 164:
+                return v1 <= v2; // IF_ICMPLE
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * Convert a two-value branch opcode (IF_ICMP*) to a Green operator.
+     *
+     * @param opcode      IF_ICMP* bytecode opcode
+     * @param branchTaken whether the branch was taken
+     * @return corresponding Green operator, or null for unsupported opcodes
+     */
+    private static Operator getTwoValueOperatorForOpcode(int opcode, boolean branchTaken) {
+        switch (opcode) {
+            case 159:
+                return branchTaken ? Operator.EQ : Operator.NE; // IF_ICMPEQ
+            case 160:
+                return branchTaken ? Operator.NE : Operator.EQ; // IF_ICMPNE
+            case 161:
+                return branchTaken ? Operator.LT : Operator.GE; // IF_ICMPLT
+            case 162:
+                return branchTaken ? Operator.GE : Operator.LT; // IF_ICMPGE
+            case 163:
+                return branchTaken ? Operator.GT : Operator.LE; // IF_ICMPGT
+            case 164:
+                return branchTaken ? Operator.LE : Operator.GT; // IF_ICMPLE
             default:
                 return null;
         }

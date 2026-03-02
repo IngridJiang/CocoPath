@@ -43,24 +43,21 @@ public class GaletteGreenBridge {
             return createConstantExpression(value);
         }
 
-        // Get the first label from the tag (for simplicity)
+        // Check GaletteSymbolicator first: it holds the correctly-named IntVariable
+        // (without the _N counter suffix appended by createVariableForType).
+        Expression existing = GaletteSymbolicator.getExpressionForTag(tag);
+        if (existing != null) {
+            return existing;
+        }
+
+        // Fallback: create a variable from the tag's labels.
         Object[] labels = tag.getLabels();
         if (labels.length == 0) {
             return createConstantExpression(value);
         }
 
-        // Use the first label to create/retrieve the symbolic variable
         Object primaryLabel = labels[0];
-        Variable variable = getOrCreateVariable(primaryLabel, value);
-
-        // If there are multiple labels, we might need to create a more complex expression
-        if (labels.length > 1) {
-            // For now, just use the first variable
-            // TODO: Handle multiple labels properly (union/intersection semantics)
-            return variable;
-        }
-
-        return variable;
+        return getOrCreateVariable(primaryLabel, value);
     }
 
     /**
