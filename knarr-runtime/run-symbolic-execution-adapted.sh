@@ -15,6 +15,8 @@
 #   ./run-symbolic-execution.sh --internal    # Single-variable mode (5 paths, simplified)
 #   ./run-symbolic-execution.sh --external    # Single-variable mode (5 paths, full Vitruvius)
 #   ./run-symbolic-execution.sh --multivar    # Multi-variable mode (25 paths, full Vitruvius)
+#   ./run-symbolic-execution.sh --brake       # TinyBrake single-disc (2 vars: profile+calib)
+#   ./run-symbolic-execution.sh --brake-multivar  # TinyBrake two-disc (4 vars)
 #   ./run-symbolic-execution.sh --force-rebuild  # Force rebuild of Amalthea-acset even if sources unchanged
 #
 # ============================================================================
@@ -34,11 +36,16 @@
 # ============================================================================
 
 set -e
+_LAST_ERR=""
+trap '_LAST_ERR="line $LINENO: $BASH_COMMAND"' ERR
+trap 'code=$?; if [ -f "pom.xml.bak" ]; then echo ""; echo "Restoring pom.xml from backup (trap)..."; mv pom.xml.bak pom.xml 2>/dev/null || true; fi; if [ $code -ne 0 ]; then echo ""; echo "=== Script exited with error (code $code) ==="; [ -n "$_LAST_ERR" ] && echo "Failed at: $_LAST_ERR"; read -rp "Press Enter to close..."; fi' EXIT
 
 USE_EXTERNAL=false
 USE_MULTIVAR=false
+USE_BRAKE=false
+USE_BRAKE_MULTIVAR=false
 FORCE_REBUILD=false
-EXTERNAL_PATH="/home/anne/CocoPath/Amalthea-acset"  # <-- MODIFY THIS for your PC
+EXTERNAL_PATH="/c/Users/10239/Amathea-acset"  # <-- MODIFY THIS for your PC
 INTERACTIVE_MODE=true
 
 # ============================================================================
@@ -106,6 +113,18 @@ while [[ $# -gt 0 ]]; do
             INTERACTIVE_MODE=false
             shift
             ;;
+        --brake|-b)
+            USE_BRAKE=true
+            USE_BRAKE_MULTIVAR=false
+            INTERACTIVE_MODE=false
+            shift
+            ;;
+        --brake-multivar|--bm)
+            USE_BRAKE=true
+            USE_BRAKE_MULTIVAR=true
+            INTERACTIVE_MODE=false
+            shift
+            ;;
         --force-rebuild|-f)
             FORCE_REBUILD=true
             shift
@@ -116,7 +135,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--internal|--external|--multivar] [--external-path PATH] [--force-rebuild]"
+            echo "Usage: $0 [--internal|--external|--multivar|--brake|--brake-multivar] [--external-path PATH] [--force-rebuild]"
             exit 1
             ;;
     esac
@@ -146,29 +165,53 @@ if [ "$INTERACTIVE_MODE" = true ]; then
     echo "     - Explores: 25 paths (5 × 5 combinations)"
     echo "     - Requires external Amalthea-acset repository"
     echo ""
-    read -p "Enter your choice (1, 2, or 3): " choice
+    echo "  4) BRAKE MODE (TinyBrakeVSUM - single disc, 2 symbolic variables)"
+    echo "     - Output: BrakeSystem/ControlSystem XMI models"
+    echo "     - Explores: up to 10 paths (4 profile intervals × 3 calib intervals; skip has no calib)"
+    echo "     - Uses tinybrake-integration module (no external repo needed)"
+    echo ""
+    echo "  5) BRAKE MULTI-VARIABLE MODE (TinyBrakeVSUM - two discs, 4 symbolic variables)"
+    echo "     - Output: BrakeSystem/ControlSystem XMI models"
+    echo "     - Explores: 81 paths (3^4: 3 profiles x 3 calibs per disc, 2 discs; skip excluded by initial [0,0,0,0])"
+    echo "     - Uses tinybrake-integration module (no external repo needed)"
+    echo ""
+    read -p "Enter your choice (1-5): " choice
     echo ""
 
     case $choice in
         1)
             USE_EXTERNAL=false
             USE_MULTIVAR=false
+            USE_BRAKE=false
             echo "Selected: INTERNAL MODE (single variable)"
             ;;
         2)
             USE_EXTERNAL=true
             USE_MULTIVAR=false
+            USE_BRAKE=false
             echo "Selected: EXTERNAL MODE (single variable)"
             ;;
         3)
             USE_EXTERNAL=true
             USE_MULTIVAR=true
+            USE_BRAKE=false
             echo "Selected: MULTI-VARIABLE MODE (two variables, 25 paths)"
+            ;;
+        4)
+            USE_BRAKE=true
+            USE_BRAKE_MULTIVAR=false
+            echo "Selected: BRAKE MODE (single disc, 2 variables)"
+            ;;
+        5)
+            USE_BRAKE=true
+            USE_BRAKE_MULTIVAR=true
+            echo "Selected: BRAKE MULTI-VARIABLE MODE (two discs, 4 variables)"
             ;;
         *)
             echo "Invalid choice. Defaulting to INTERNAL MODE."
             USE_EXTERNAL=false
             USE_MULTIVAR=false
+            USE_BRAKE=false
             ;;
     esac
     echo ""
@@ -215,7 +258,56 @@ check_sources_changed() {
     fi
 }
 
-if [ "$USE_EXTERNAL" = true ]; then
+if [ "$USE_BRAKE" = true ]; then
+    echo "Mode: BRAKE (switching to tinybrake-integration)"
+    echo ""
+
+    # Find Python
+    PYTHON_CMD=""
+    if command -v python.exe &> /dev/null && python.exe --version &> /dev/null; then
+        PYTHON_CMD="python.exe"
+    elif command -v python3 &> /dev/null && python3 --version &> /dev/null; then
+        PYTHON_CMD="python3"
+    elif command -v python &> /dev/null && python --version &> /dev/null; then
+        PYTHON_CMD="python"
+    else
+        echo "ERROR: Python not found. Cannot switch dependencies."
+        exit 1
+    fi
+
+    # Clean Maven cache for tinybrake to avoid stale JARs
+    echo "      Cleaning Maven repository cache..."
+    rm -rf "$HOME/.m2/repository/edu/neu/ccs/prl/galette/tinybrake-integration-consistency/1.0.0-SNAPSHOT/" 2>/dev/null || true
+    rm -rf "$HOME/.m2/repository/edu/neu/ccs/prl/galette/tinybrake-integration-vsum/1.0.0-SNAPSHOT/" 2>/dev/null || true
+    echo "      Removed cached tinybrake JARs"
+    echo ""
+
+    echo "[1/4] Switching pom.xml to brake dependency..."
+    $PYTHON_CMD switch-dependency.py brake pom.xml
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Failed to switch to brake dependency"
+        exit 1
+    fi
+    echo "      Switched to brake dependency."
+    echo ""
+
+    # Build tinybrake-integration module
+    BRAKE_DIR="$(dirname "$SCRIPT_DIR")/tinybrake-integration"
+    if [ "$FORCE_REBUILD" = true ]; then
+        echo "[2/4] Building tinybrake-integration (--force-rebuild flag set)..."
+        (cd "$BRAKE_DIR" && mvn clean install -DskipTests -Dcheckstyle.skip=true)
+    elif check_sources_changed "$BRAKE_DIR"; then
+        echo "[2/4] Building tinybrake-integration (sources have changed)..."
+        (cd "$BRAKE_DIR" && mvn clean install -DskipTests -Dcheckstyle.skip=true)
+    else
+        echo "[2/4] Skipping tinybrake-integration build (sources unchanged)..."
+    fi
+    echo "      Done."
+    echo ""
+
+    STEP_OFFSET=2
+
+elif [ "$USE_EXTERNAL" = true ]; then
     echo "Mode: EXTERNAL (switching to external Amalthea-acset)"
     echo ""
 
@@ -345,7 +437,7 @@ STEP2=$((4 + STEP_OFFSET))
 TOTAL_STEPS=$((4 + STEP_OFFSET))
 
 echo "[$STEP1/$TOTAL_STEPS] Cleaning previous outputs..."
-rm -rf galette-output-* execution_paths.json 2>/dev/null || true
+rm -rf galette-output-* execution_paths*.json 2>/dev/null || true
 echo "      Done."
 echo ""
 
@@ -353,7 +445,13 @@ echo "[$STEP2/$TOTAL_STEPS] Running symbolic execution..."
 echo "      With semi-automatic constraint collection in reaction"
 
 # Determine which main class to use
-if [ "$USE_MULTIVAR" = true ]; then
+if [ "$USE_BRAKE" = true ] && [ "$USE_BRAKE_MULTIVAR" = true ]; then
+    MAIN_CLASS="edu.neu.ccs.prl.galette.vitruvius.AutomaticBrakeMultiVarPathExploration"
+    echo "      Main class: AutomaticBrakeMultiVarPathExploration (brake two-disc)"
+elif [ "$USE_BRAKE" = true ]; then
+    MAIN_CLASS="edu.neu.ccs.prl.galette.vitruvius.AutomaticBrakePathExploration"
+    echo "      Main class: AutomaticBrakePathExploration (brake single-disc)"
+elif [ "$USE_MULTIVAR" = true ]; then
     MAIN_CLASS="edu.neu.ccs.prl.galette.vitruvius.AutomaticVitruvMultiVarPathExploration"
     echo "      Main class: AutomaticVitruvMultiVarPathExploration (multi-variable)"
 else
@@ -385,16 +483,29 @@ fi
 
 # Build classpath
 mvn -q -DincludeScope=runtime -Dmdep.outputFile=cp.txt dependency:build-classpath
-CP="target/classes:target/test-classes:$(cat cp.txt)"
+# Use ; as classpath separator on Windows (Git Bash/MSYS), : on Unix
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OS" == "Windows_NT" ]]; then
+    CP_SEP=";"
+else
+    CP_SEP=":"
+fi
+CP="target/classes${CP_SEP}target/test-classes${CP_SEP}$(cat cp.txt)"
 
 echo "      Using instrumented JVM with Galette agent"
+
+# No extra JVM flags needed: constraint recording for brake modes uses explicit
+# PathUtils.addIfComparisonConstraint calls in the reactions (mirroring Amalthea's
+# addSwitchConstraint pattern), so TagPropagator branch instrumentation is not required.
+SYMBOLIC_FLAG=""
+
 set +e
 "$INSTRUMENTED_JAVA/bin/java" \
     -cp "$CP" \
     -Xbootclasspath/a:"$GALETTE_AGENT" \
     -javaagent:"$GALETTE_AGENT" \
     -Dgalette.cache=target/galette/cache \
-    -Dpath.explorer.max.iterations=30 \
+    -Dpath.explorer.max.iterations=200 \
+    ${SYMBOLIC_FLAG} \
     "$MAIN_CLASS"
 MVN_EXIT=$?
 set -e
@@ -412,7 +523,16 @@ if [ -f "pom.xml.bak" ]; then
     echo "      Done."
 fi
 
-if [ ! -f "execution_paths_automatic.json" ]; then
+if [ "$USE_BRAKE" = true ]; then
+    EXPECTED_JSON="execution_paths_brake_multivar.json"
+    [ "$USE_BRAKE_MULTIVAR" != true ] && EXPECTED_JSON="execution_paths_brake.json"
+elif [ "$USE_MULTIVAR" = true ]; then
+    EXPECTED_JSON="execution_paths_multivar.json"
+else
+    EXPECTED_JSON="execution_paths_automatic.json"
+fi
+
+if [ ! -f "$EXPECTED_JSON" ]; then
     if [ $MVN_EXIT -ne 0 ]; then
         echo ""
         echo "ERROR: Symbolic execution failed!"
@@ -425,7 +545,17 @@ echo "==========================================================================
 echo "Completed."
 echo "================================================================================"
 echo ""
-if [ "$USE_MULTIVAR" = true ]; then
+if [ "$USE_BRAKE" = true ] && [ "$USE_BRAKE_MULTIVAR" = true ]; then
+    echo "Generated files:"
+    echo "  - execution_paths_brake_multivar.json  (Path exploration results)"
+    echo "  - galette-output-brake-multivar-*/     (Model outputs per path combination)"
+    echo ""
+elif [ "$USE_BRAKE" = true ]; then
+    echo "Generated files:"
+    echo "  - execution_paths_brake.json           (Path exploration results)"
+    echo "  - galette-output-brake-*/              (Model outputs per path)"
+    echo ""
+elif [ "$USE_MULTIVAR" = true ]; then
     echo "Generated files:"
     echo "  - execution_paths_multivar.json       (Path exploration results)"
     echo "  - galette-output-multivar-*/          (Model outputs per path combination)"

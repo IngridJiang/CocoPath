@@ -89,7 +89,7 @@ public class AutomaticVitruvPathExploration {
             System.out.println(
                     "[AutomaticVitruvPathExploration:executeVitruvWithInput]   Attempting to invoke insertTask with workDir="
                             + workDir + ", input=" + input);
-            Method insertTask = testInstance.getClass().getMethod("insertTask", Path.class, Integer.class);
+            Method insertTask = testInstance.getClass().getMethod("insertTask", Path.class, int.class);
             System.out.println("[AutomaticVitruvPathExploration:executeVitruvWithInput]   Found method: " + insertTask);
 
             insertTask.invoke(testInstance, workDir, input);

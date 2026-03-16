@@ -5,6 +5,7 @@ import java.util.*;
 import za.ac.sun.cs.green.expr.BinaryOperation;
 import za.ac.sun.cs.green.expr.Expression;
 import za.ac.sun.cs.green.expr.Operation.Operator;
+import za.ac.sun.cs.green.expr.Variable;
 
 /**
  * Automatic path exploration engine for concolic execution.
@@ -29,8 +30,7 @@ import za.ac.sun.cs.green.expr.Operation.Operator;
 public class PathExplorer {
 
     private static final boolean DEBUG = true; // Boolean.getBoolean("path.explorer.debug");
-    private static final int MAX_ITERATIONS =
-            Integer.getInteger("path.explorer.max.iterations", 30); // Reduced from 100 for debugging
+    private static final int MAX_ITERATIONS = Integer.getInteger("path.explorer.max.iterations", 200);
 
     public static class PathRecord {
         public final int pathId;
@@ -71,6 +71,14 @@ public class PathExplorer {
     // For multi-variable exploration: we need to separate negations per variable
     // to enable proper backtracking
     private final List<List<Expression>> negationsPerVariable = new ArrayList<>();
+
+    // If-based multi-variable exploration: stable variable ordering by first appearance
+    // Maps qualified variable name → index in currentInputsList (insertion-ordered)
+    private final java.util.LinkedHashMap<String, Integer> varNameToIndex = new java.util.LinkedHashMap<>();
+
+    // Initial values passed to exploreMultipleIntegers, used to reset inner variables
+    // when backtracking from an inner variable to an outer one.
+    private List<Integer> storedInitialValues = null;
 
     // ThreadLocal to pass variable name -> Tag mapping to executor
     private static final ThreadLocal<Map<String, Tag>> currentVarToTag = ThreadLocal.withInitial(HashMap::new);
@@ -304,6 +312,8 @@ public class PathExplorer {
         negatedSwitchConstraints.clear();
         domainConstraint = null;
         negationsPerVariable.clear();
+        varNameToIndex.clear();
+        storedInitialValues = new ArrayList<>(initialValues);
 
         int numVars = initialValues.size();
 
@@ -340,24 +350,17 @@ public class PathExplorer {
             PathConditionWrapper pc = executor.execute(inputsForExecution);
             long endTime = System.currentTimeMillis();
 
-            // Extract variable names from constraints after execution
-            List<String> variableNames = new ArrayList<>();
-            Map<String, Integer> currentInputs = new HashMap<>();
-
-            // If we have constraints, extract variable names from them
+            // Update variable registry and domain constraints from this execution's constraints
             if (pc != null && !pc.isEmpty()) {
                 List<Expression> tempConstraints = pc.getConstraints();
-                // Look for switch constraints (equality constraints) to extract variable names
-                Set<String> uniqueVarNames = new LinkedHashSet<>();
-                for (Expression constraint : tempConstraints) {
-                    String constraintStr = constraint.toString();
-                    if (constraintStr.contains("==")) {
-                        String varName = constraintStr.split("==")[0];
-                        uniqueVarNames.add(varName);
-                    }
-                }
-                variableNames.addAll(uniqueVarNames);
+                // Register new variable names (by order of first appearance in branch constraints)
+                updateVarNameToIndex(tempConstraints);
+                // Accumulate domain constraints (AND-expressions from getOrMakeSymbolicInt)
+                extractDomainConstraints(tempConstraints, numVars);
             }
+
+            // Build variable names list for recording (use stable index-ordered list)
+            List<String> variableNames = new ArrayList<>(varNameToIndex.keySet());
 
             // If we still don't have variable names, use generic names
             if (variableNames.isEmpty()) {
@@ -366,9 +369,13 @@ public class PathExplorer {
                 }
             }
 
-            // Map the values to variable names
-            for (int i = 0; i < Math.min(currentInputsList.size(), variableNames.size()); i++) {
-                currentInputs.put(variableNames.get(i), currentInputsList.get(i));
+            // Map the current input values to variable names for the PathRecord
+            Map<String, Integer> currentInputs = new HashMap<>();
+            for (Map.Entry<String, Integer> entry : varNameToIndex.entrySet()) {
+                int idx = entry.getValue();
+                if (idx < currentInputsList.size()) {
+                    currentInputs.put(entry.getKey(), currentInputsList.get(idx));
+                }
             }
 
             if (DEBUG) {
@@ -414,13 +421,8 @@ public class PathExplorer {
             exploredPaths.add(new PathRecord(iteration, inputs, constraints, endTime - startTime));
             exploredConstraintSignatures.add(constraintSignature);
 
-            // Extract domain constraints on first iteration
-            if (iteration == 0) {
-                extractDomainConstraints(constraints, numVars);
-            }
-
             // Generate next input combination
-            currentInputsList = generateNextMultiVarInputList(constraints, variableNames, numVars);
+            currentInputsList = generateNextMultiVarInputList(constraints, variableNames, currentInputsList, numVars);
 
             if (currentInputsList == null) {
                 if (DEBUG) System.out.println("No more satisfiable inputs - terminating exploration");
@@ -442,35 +444,75 @@ public class PathExplorer {
         return new ArrayList<>(exploredPaths);
     }
 
+    /**
+     * Scan the current constraint list for domain constraints (AND-expressions produced by
+     * {@code PathUtils.addIntDomainConstraint}) and accumulate them into {@code domainConstraint}.
+     *
+     * <p>This method is called on <em>every</em> iteration so that variables whose domain is
+     * registered later (e.g. calibChoice is not called when profile=skip) are captured the
+     * first time they appear.
+     *
+     * <p>A domain constraint has the form {@code AND(LE(min, var), LT(var, max))} — a top-level
+     * AND-expression.  Branch constraints from if-statement instrumentation are simple comparisons
+     * (LT, GE, etc.) and are therefore easy to distinguish.
+     */
     private void extractDomainConstraints(List<Expression> constraints, int numVars) {
-        // Domain constraints have the form: (min <= var) AND (var <= max)
-        // They alternate with equality constraints: [domain1, equality1, domain2, equality2, ...]
-        // We need to extract every other constraint starting from index 0
-        if (constraints.size() >= numVars * 2) {
-            List<Expression> domainExprs = new ArrayList<>();
-
-            // Extract domain constraints (every other constraint, starting at 0)
-            for (int i = 0; i < numVars; i++) {
-                int constraintIndex = i * 2; // 0, 2, 4, ...
-                if (constraintIndex < constraints.size()) {
-                    Expression constraint = constraints.get(constraintIndex);
-                    // Verify it looks like a domain constraint (contains >= or <=)
-                    String constraintStr = constraint.toString();
-                    if (constraintStr.contains(">=") || constraintStr.contains("<=")) {
-                        domainExprs.add(constraint);
-                    }
+        // If-based: detect top-level AND-expressions as domain constraints; accumulate cumulatively.
+        for (Expression c : constraints) {
+            if (isDomainConstraint(c)) {
+                String cStr = c.toString();
+                if (domainConstraint == null) {
+                    domainConstraint = c;
+                } else if (!domainConstraint.toString().contains(cStr)) {
+                    // Only add if not already covered (avoids duplicating same var's domain)
+                    domainConstraint = new BinaryOperation(Operator.AND, domainConstraint, c);
                 }
             }
+        }
 
-            // Combine domain constraints with AND
-            if (!domainExprs.isEmpty()) {
-                domainConstraint = domainExprs.get(0);
-                for (int i = 1; i < domainExprs.size(); i++) {
-                    domainConstraint = new BinaryOperation(Operator.AND, domainConstraint, domainExprs.get(i));
-                }
+        if (DEBUG && domainConstraint != null) {
+            System.out.println("[PathExplorer:extractDomainConstraints] Accumulated domain: " + domainConstraint);
+        }
+    }
 
-                if (DEBUG) {
-                    System.out.println("Extracted domain constraints: " + domainConstraint);
+    /**
+     * Returns true when {@code expr} is a domain constraint — a top-level AND-expression whose
+     * children are simple comparisons (as produced by {@link PathUtils#addIntDomainConstraint}).
+     * Branch constraints from if-statement instrumentation are plain comparisons (not AND).
+     */
+    private boolean isDomainConstraint(Expression expr) {
+        if (!(expr instanceof BinaryOperation)) return false;
+        return ((BinaryOperation) expr).getOperator() == Operator.AND;
+    }
+
+    /**
+     * Extract the primary variable name from a simple comparison constraint
+     * (e.g. {@code LT(var, 34)} → "var", {@code GE(0, var)} → "var").
+     * Returns null for domain constraints (AND-expressions) or constants.
+     */
+    private String extractPrimaryVarName(Expression expr) {
+        if (!(expr instanceof BinaryOperation)) return null;
+        BinaryOperation binOp = (BinaryOperation) expr;
+        if (binOp.left instanceof Variable) return ((Variable) binOp.left).getName();
+        if (binOp.right instanceof Variable) return ((Variable) binOp.right).getName();
+        return null;
+    }
+
+    /**
+     * Update {@link #varNameToIndex} with any new variable names found in branch constraints
+     * (non-AND expressions).  Variables are numbered by order of first appearance so that
+     * the index matches the position in {@code currentInputsList}.
+     */
+    private void updateVarNameToIndex(List<Expression> constraints) {
+        for (Expression c : constraints) {
+            if (!isDomainConstraint(c)) {
+                String varName = extractPrimaryVarName(c);
+                if (varName != null && !varNameToIndex.containsKey(varName)) {
+                    varNameToIndex.put(varName, varNameToIndex.size());
+                    if (DEBUG) {
+                        System.out.println("[PathExplorer:updateVarNameToIndex] Registered var["
+                                + (varNameToIndex.size() - 1) + "] = " + varName);
+                    }
                 }
             }
         }
@@ -489,265 +531,162 @@ public class PathExplorer {
     }
 
     /**
-     * Generate next multi-variable input as a list instead of a map.
-     * This allows us to work without knowing variable names upfront.
+     * Generate the next input list for if-based multi-variable exploration.
+     *
+     * <p>Separates domain constraints (top-level AND-expressions) from branch constraints
+     * (simple comparisons from instrumented if-statements).  Groups branch constraints by
+     * variable and uses the <em>last</em> branch constraint per variable as the representative
+     * for backtracking — mirroring the single-variable "negate last constraint" strategy.
+     *
+     * <p>UNSAT-triggered backtracking: when all values for the rightmost active variable are
+     * exhausted, remove its accumulated negations and try the next variable to the left.
+     *
+     * @param currentConstraints constraints collected by the current execution
+     * @param variableNames      qualified variable names in index order (from varNameToIndex)
+     * @param previousInputs     previous concrete input list (used as fallback for unassigned vars)
+     * @param numVars            total number of symbolic variables
      */
     private List<Integer> generateNextMultiVarInputList(
-            List<Expression> currentConstraints, List<String> variableNames, int numVars) {
-
-        Map<String, Integer> resultMap = generateNextMultiVarInput(currentConstraints, variableNames, numVars);
-
-        if (resultMap == null) {
-            return null;
-        }
-
-        // Since variableNames might be empty, we need to extract values based on the order
-        // they appear in the resultMap. The resultMap contains qualified names from constraints.
-        List<Integer> resultList = new ArrayList<>();
-
-        // Sort the keys to ensure consistent ordering
-        List<String> sortedKeys = new ArrayList<>(resultMap.keySet());
-        Collections.sort(sortedKeys);
-
-        for (String key : sortedKeys) {
-            resultList.add(resultMap.get(key));
-            if (DEBUG) {
-                System.out.println("Adding to result list: " + key + " = " + resultMap.get(key));
-            }
-        }
-
-        return resultList;
-    }
-
-    /**
-     * Generate the next input combination for multi-variable exploration.
-     * This version extracts variable names from the constraints themselves,
-     * similar to how generateNextInput works for single variables.
-     */
-    private Map<String, Integer> generateNextMultiVarInput(
-            List<Expression> currentConstraints, List<String> variableNames, int numVars) {
+            List<Expression> currentConstraints,
+            List<String> variableNames,
+            List<Integer> previousInputs,
+            int numVars) {
 
         if (currentConstraints.isEmpty()) {
             return null;
         }
 
-        // Extract switch constraints
-        // After first iteration, we only get switch constraints (no domain constraints)
-        // So we need to handle both cases: with and without domain constraints
-        List<Expression> switchConstraints = new ArrayList<>();
+        // Collect branch constraints (non-domain) grouped by variable, in index order
+        // orderedVarNames mirrors varNameToIndex key order
+        List<String> orderedVarNames = new ArrayList<>(varNameToIndex.keySet());
 
-        if (currentConstraints.size() == numVars * 2) {
-            // First iteration: has both domain and switch constraints
-            // Extract switch constraints from odd indices: 1, 3, 5, ...
-            for (int i = 0; i < numVars; i++) {
-                int switchIndex = i * 2 + 1;
-                if (switchIndex < currentConstraints.size()) {
-                    switchConstraints.add(currentConstraints.get(switchIndex));
+        // For each variable, find the LAST branch constraint that mentions it
+        // (the deepest if-comparison, which uniquely characterises the interval taken)
+        List<Expression> lastBranchPerVar = new ArrayList<>();
+        for (String varName : orderedVarNames) {
+            Expression lastBranch = null;
+            for (Expression c : currentConstraints) {
+                if (!isDomainConstraint(c) && varName.equals(extractPrimaryVarName(c))) {
+                    lastBranch = c;
                 }
             }
-        } else if (currentConstraints.size() == numVars) {
-            // Subsequent iterations: only switch constraints
-            switchConstraints.addAll(currentConstraints);
-        } else {
-            if (DEBUG) {
-                System.out.println("[PathExplorer:generateNextMultiVarInput] Unexpected number of constraints: "
-                        + currentConstraints.size() + " for " + numVars + " variables");
-            }
-            // Try to handle it anyway - assume they're all switch constraints
-            switchConstraints.addAll(currentConstraints);
+            lastBranchPerVar.add(lastBranch); // may be null if var inactive in this path
         }
 
-        if (switchConstraints.isEmpty()) {
-            if (DEBUG) System.out.println("[PathExplorer:generateNextMultiVarInput] No switch constraints to negate");
-            return null;
+        if (DEBUG) {
+            System.out.println("[PathExplorer:generateNextMultiVarInputList] last-branch-per-var:");
+            for (int i = 0; i < orderedVarNames.size(); i++) {
+                System.out.println("  var[" + i + "] " + orderedVarNames.get(i) + " → " + lastBranchPerVar.get(i));
+            }
         }
 
-        // Extract domain size from domain constraint to avoid hard-coding
-        // Domain constraint looks like: (0<=var)&&(var<5) which means domain is [0,4]
-        int maxDomainSize = 5; // Default
-        if (domainConstraint != null) {
-            String domainStr = domainConstraint.toString();
-            if (DEBUG) {
-                System.out.println("[PathExplorer:generateNextMultiVarInput] Domain constraint string: " + domainStr);
+        // UNSAT-triggered backtracking from rightmost active variable
+        for (int tryVarIdx = lastBranchPerVar.size() - 1; tryVarIdx >= 0; tryVarIdx--) {
+            Expression branchToNegate = lastBranchPerVar.get(tryVarIdx);
+            if (branchToNegate == null) {
+                // Variable was not active in this path (e.g. calibChoice on skip path) — skip
+                continue;
             }
 
-            // Look for pattern "variable<NUMBER)" where NUMBER is immediately after <
-            // E.g., "CreateAscetTaskRoutine:execute:userChoice_forTask_task1<5"
-            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("<(\\d+)\\)");
-            java.util.regex.Matcher matcher = pattern.matcher(domainStr);
-            if (matcher.find()) {
-                try {
-                    int upperBound = Integer.parseInt(matcher.group(1));
-                    if (upperBound > 0 && upperBound <= 100) {
-                        maxDomainSize = upperBound;
+            Expression negated = ConstraintSolver.negateConstraint(branchToNegate);
+            negatedSwitchConstraints.add(negated);
+
+            if (DEBUG) {
+                System.out.println("[PathExplorer:generateNextMultiVarInputList] Negating var["
+                        + tryVarIdx + "] (" + orderedVarNames.get(tryVarIdx) + "): "
+                        + branchToNegate + " → " + negated);
+            }
+
+            // Build: domain AND all accumulated negations
+            Expression combined = domainConstraint;
+            for (Expression neg : negatedSwitchConstraints) {
+                combined = (combined == null) ? neg : new BinaryOperation(Operator.AND, combined, neg);
+            }
+
+            // Pin outer variables (index < tryVarIdx) to their current-execution intervals.
+            // Without this, the solver is free to pick arbitrary values for those variables
+            // (e.g. disc1Profile=-1 when we only want to explore disc2's next interval).
+            for (Expression c : currentConstraints) {
+                if (!isDomainConstraint(c)) {
+                    String varName = extractPrimaryVarName(c);
+                    Integer varIdx = varNameToIndex.get(varName);
+                    if (varIdx != null && varIdx < tryVarIdx) {
+                        combined = (combined == null) ? c : new BinaryOperation(Operator.AND, combined, c);
+                    }
+                }
+            }
+
+            if (DEBUG) {
+                System.out.println("[PathExplorer:generateNextMultiVarInputList] Solver constraint: " + combined);
+            }
+
+            InputSolution solution = Z3ConstraintSolver.solveConstraintWithZ3(combined);
+
+            if (solution != null && solution.isSatisfiable()) {
+                // SAT: build result list, starting from previous values as fallback
+                List<Integer> result = new ArrayList<>(previousInputs);
+                // Pad to numVars in case previousInputs is shorter
+                while (result.size() < numVars) result.add(0);
+
+                for (String key : solution.getLabels()) {
+                    Object value = solution.getValue(key);
+                    Integer idx = varNameToIndex.get(key);
+                    if (idx != null && value instanceof Number && idx < result.size()) {
+                        result.set(idx, ((Number) value).intValue());
                         if (DEBUG) {
-                            System.out.println("[PathExplorer:generateNextMultiVarInput] Extracted upper bound: "
-                                    + upperBound + " from pattern <" + upperBound + ")");
+                            System.out.println("[PathExplorer:generateNextMultiVarInputList] " + "Set result[" + idx
+                                    + "] (" + key + ") = " + result.get(idx));
                         }
                     }
-                } catch (NumberFormatException e) {
-                    // Keep default
                 }
-            }
-        }
 
-        if (DEBUG) {
-            System.out.println("[PathExplorer:generateNextMultiVarInput] Using domain size: " + maxDomainSize);
-        }
-
-        // Multi-variable exploration: properly handle backtracking
-        // Strategy: For 2 variables with domain [0,4], we want:
-        // (0,0), (0,1), (0,2), (0,3), (0,4), then
-        // (1,0), (1,1), (1,2), (1,3), (1,4), then
-        // (2,0), etc. up to (4,4) = 25 total combinations
-
-        // Count how many negations we have for each variable
-        int[] negationsPerVar = new int[numVars];
-        for (Expression neg : negatedSwitchConstraints) {
-            String negStr = neg.toString();
-            // Check which variable this negation is for
-            for (int i = 0; i < numVars && i < switchConstraints.size(); i++) {
-                String varName = switchConstraints.get(i).toString().split("==")[0];
-                if (negStr.contains(varName)) {
-                    negationsPerVar[i]++;
-                    break;
-                }
-            }
-        }
-
-        if (DEBUG) {
-            System.out.println("[PathExplorer:generateNextMultiVarInput] Negations per variable: "
-                    + Arrays.toString(negationsPerVar));
-        }
-
-        // Find which variable to negate next
-        boolean foundVariableToNegate = false;
-
-        // Check if we can increment the rightmost variable
-        int lastVarIdx = numVars - 1;
-        if (lastVarIdx < switchConstraints.size() && negationsPerVar[lastVarIdx] < maxDomainSize - 1) {
-            // Can still negate the last variable
-            Expression lastSwitch = switchConstraints.get(lastVarIdx);
-            Expression negatedSwitch = ConstraintSolver.negateConstraint(lastSwitch);
-            negatedSwitchConstraints.add(negatedSwitch);
-            foundVariableToNegate = true;
-
-            if (DEBUG) {
-                System.out.println("[PathExplorer:generateNextMultiVarInput] Negating last variable: " + lastSwitch
-                        + " -> " + negatedSwitch);
-            }
-        } else if (lastVarIdx >= 0 && negationsPerVar[lastVarIdx] >= maxDomainSize - 1) {
-            // Last variable is exhausted, need to backtrack
-            if (DEBUG)
-                System.out.println("[PathExplorer:generateNextMultiVarInput] Last variable exhausted, backtracking...");
-
-            // Find the first variable from the right that can be incremented
-            for (int i = lastVarIdx - 1; i >= 0; i--) {
-                if (i < switchConstraints.size() && negationsPerVar[i] < maxDomainSize - 1) {
-                    // Found a variable that can be incremented
-
-                    // First, clear all negations for variables to the right of this one
-                    List<Expression> toRemove = new ArrayList<>();
-                    for (Expression neg : negatedSwitchConstraints) {
-                        String negStr = neg.toString();
-                        // Check if this negation is for a variable after i
-                        for (int j = i + 1; j < numVars && j < switchConstraints.size(); j++) {
-                            String varName = switchConstraints.get(j).toString().split("==")[0];
-                            if (negStr.contains(varName)) {
-                                toRemove.add(neg);
-                                break;
+                // When we backtracked to an outer variable (tryVarIdx < last index),
+                // reset all inner variables (index > tryVarIdx) to their initial values
+                // so that the inner exploration restarts from the beginning.
+                if (storedInitialValues != null && tryVarIdx < orderedVarNames.size() - 1) {
+                    for (int j = tryVarIdx + 1; j < orderedVarNames.size(); j++) {
+                        String innerVarName = orderedVarNames.get(j);
+                        Integer innerIdx = varNameToIndex.get(innerVarName);
+                        if (innerIdx != null && innerIdx < result.size() && innerIdx < storedInitialValues.size()) {
+                            result.set(innerIdx, storedInitialValues.get(innerIdx));
+                            if (DEBUG) {
+                                System.out.println("[PathExplorer:generateNextMultiVarInputList] Reset inner var["
+                                        + innerIdx + "] (" + innerVarName + ") to initial "
+                                        + storedInitialValues.get(innerIdx));
                             }
                         }
                     }
-                    negatedSwitchConstraints.removeAll(toRemove);
-
-                    if (DEBUG && !toRemove.isEmpty()) {
-                        System.out.println("[PathExplorer:generateNextMultiVarInput] Cleared " + toRemove.size()
-                                + " negations for variables after " + i);
-                    }
-
-                    // Now negate variable i
-                    Expression switchToNegate = switchConstraints.get(i);
-                    Expression negatedSwitch = ConstraintSolver.negateConstraint(switchToNegate);
-                    negatedSwitchConstraints.add(negatedSwitch);
-                    foundVariableToNegate = true;
-
-                    if (DEBUG) {
-                        System.out.println("[PathExplorer:generateNextMultiVarInput] Negating variable " + i + ": "
-                                + switchToNegate + " -> " + negatedSwitch);
-                    }
-                    break;
                 }
+
+                return result;
             }
-        }
 
-        if (!foundVariableToNegate) {
-            if (DEBUG)
-                System.out.println(
-                        "[PathExplorer:generateNextMultiVarInput] All variables exhausted - exploration complete");
-            return null;
-        }
+            // UNSAT: variable at tryVarIdx is exhausted under current negations.
+            // Remove ALL negations for variables at index >= tryVarIdx and backtrack.
+            String exhaustedVarName = orderedVarNames.get(tryVarIdx);
+            final int exhaustedIdx = tryVarIdx;
+            negatedSwitchConstraints.removeIf(neg -> {
+                String varInNeg = extractPrimaryVarName(neg);
+                if (varInNeg != null) {
+                    Integer negVarIdx = varNameToIndex.get(varInNeg);
+                    return negVarIdx != null && negVarIdx >= exhaustedIdx;
+                }
+                // Fallback: string-based check for the exhausted variable
+                return neg.toString().contains(exhaustedVarName);
+            });
 
-        if (DEBUG) {
-            System.out.println("[PathExplorer:generateNextMultiVarInput] Total negated constraints: "
-                    + negatedSwitchConstraints.size());
-        }
-
-        // Build combined constraint: domain AND all negated switches
-        Expression combinedConstraint = domainConstraint;
-
-        // Add all negated switch constraints
-        for (Expression negated : negatedSwitchConstraints) {
-            if (combinedConstraint == null) {
-                combinedConstraint = negated;
-            } else {
-                combinedConstraint = new BinaryOperation(Operator.AND, combinedConstraint, negated);
+            if (DEBUG) {
+                System.out.println("[PathExplorer:generateNextMultiVarInputList] UNSAT for var["
+                        + tryVarIdx + "] (" + exhaustedVarName + "), backtracking. "
+                        + "Remaining negations: " + negatedSwitchConstraints.size());
             }
         }
 
         if (DEBUG) {
             System.out.println(
-                    "[PathExplorer:generateNextMultiVarInput] Combined constraint for solver: " + combinedConstraint);
+                    "[PathExplorer:generateNextMultiVarInputList] " + "All variables exhausted - exploration complete");
         }
-
-        // Solve the combined constraint
-        InputSolution solution = Z3ConstraintSolver.solveConstraintWithZ3(combinedConstraint);
-
-        if (solution == null || !solution.isSatisfiable()) {
-            if (DEBUG)
-                System.out.println(
-                        "[PathExplorer:generateNextMultiVarInput] UNSAT - no more inputs satisfy the constraints");
-            return null;
-        }
-
-        // Extract values for all variables from the solution
-        Map<String, Integer> resultMap = new HashMap<>();
-
-        // The solver returns values with the qualified names from constraints
-        for (String key : solution.getLabels()) {
-            Object value = solution.getValue(key);
-            if (value != null) {
-                if (DEBUG) {
-                    System.out.println("[PathExplorer:generateNextMultiVarInput] Z3 found value in solution: " + key
-                            + " = " + value);
-                }
-
-                if (value instanceof Integer) {
-                    resultMap.put(key, (Integer) value);
-                } else if (value instanceof Number) {
-                    resultMap.put(key, ((Number) value).intValue());
-                }
-            }
-        }
-
-        if (resultMap.isEmpty()) {
-            if (DEBUG) {
-                System.out.println("Warning: No values found in solution. Available keys: " + solution.getLabels());
-            }
-            return null;
-        }
-
-        return resultMap;
+        return null;
     }
 
     /**

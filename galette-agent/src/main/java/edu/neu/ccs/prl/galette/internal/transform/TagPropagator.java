@@ -14,12 +14,22 @@ import org.objectweb.asm.tree.MethodNode;
 class TagPropagator extends MethodVisitor {
     private final ShadowLocals shadowLocals;
 
-    private TagPropagator(ShadowLocals shadowLocals, MethodVisitor mv) {
+    /**
+     * True when the class being instrumented is an application class whose classloader can
+     * resolve PathUtils (knarr-runtime) at runtime.  False for JDK bootstrap classes (java/,
+     * sun/, jdk/, javax/, com/sun/) which use the bootstrap classloader and cannot access
+     * PathUtils.  When false, branch constraint injection is skipped even if
+     * galette.symbolic.enabled=true.
+     */
+    private final boolean isAppClass;
+
+    private TagPropagator(ShadowLocals shadowLocals, MethodVisitor mv, boolean isAppClass) {
         super(GaletteTransformer.ASM_VERSION, mv);
         if (shadowLocals == null) {
             throw new NullPointerException();
         }
         this.shadowLocals = shadowLocals;
+        this.isAppClass = isAppClass;
     }
 
     @Override
@@ -571,17 +581,18 @@ class TagPropagator extends MethodVisitor {
             case IFGE:
             case IFGT:
             case IFLE:
+                // ..., int-value -> ...
+                if (shouldRecordBranchConstraints()) {
+                    recordBranchConstraint(opcode, label);
+                    // recordBranchConstraint emits the original jump instruction
+                    shadowLocals.pop(1);
+                    return;
+                }
+                shadowLocals.pop(1);
+                break;
             case IFNULL:
             case IFNONNULL:
-                // ..., value -> ...
-                // Before popping, record constraint if symbolic execution is enabled
-                if (isSymbolicExecutionEnabled()) {
-                    recordBranchConstraint(opcode, label);
-                    // recordBranchConstraint handles the jump instruction itself
-                    // So we don't call super.visitJumpInsn for these opcodes
-                    shadowLocals.pop(1);
-                    return; // Early return - don't execute super.visitJumpInsn
-                }
+                // ..., objectref -> ...  (reference comparison; no integer constraint recording)
                 shadowLocals.pop(1);
                 break;
             case IF_ICMPEQ:
@@ -590,6 +601,14 @@ class TagPropagator extends MethodVisitor {
             case IF_ICMPGE:
             case IF_ICMPGT:
             case IF_ICMPLE:
+                // ..., value1, value2 -> ...
+                if (shouldRecordBranchConstraints()) {
+                    recordTwoValueBranchConstraint(opcode, label);
+                    shadowLocals.pop(2);
+                    return;
+                }
+                shadowLocals.pop(2);
+                break;
             case IF_ACMPEQ:
             case IF_ACMPNE:
                 // ..., value1, value2 -> ...
@@ -753,124 +772,124 @@ class TagPropagator extends MethodVisitor {
     private static final String TAG_DESC = "Ledu/neu/ccs/prl/galette/internal/runtime/Tag;";
 
     /**
-     * Check if symbolic execution is enabled.
+     * Check if branch constraint recording should be performed for this method.
+     * Returns true only when symbolic execution is globally enabled AND the class
+     * being instrumented is an application class (not a JDK bootstrap class).
      */
-    private static boolean isSymbolicExecutionEnabled() {
-        return SYMBOLIC_EXECUTION_ENABLED;
+    private boolean shouldRecordBranchConstraints() {
+        return SYMBOLIC_EXECUTION_ENABLED && isAppClass;
     }
 
     /**
-     * Record a branch constraint by peeking at the tag on the shadow stack.
-     * Called before the tag is popped for branch instructions (IFEQ, IFNE, etc.).
+     * Record a branch constraint for single-value branch instructions (IFEQ, IFLT, IFGE etc.).
+     * Uses value-based tag lookup via PathUtils.testAndRecordSingleValueBranch.
      *
-     * Pattern (based on Phosphor's PathConstraintTagFactory):
-     * 1. Peek at tag on shadow stack
-     * 2. Check if tag is null (concrete value)
-     * 3. If null, execute normal branch
-     * 4. If not null (symbolic), create two paths:
-     *    a. Path where branch is taken → record constraint with branchTaken=true
-     *    b. Path where branch is NOT taken → record constraint with branchTaken=false
+     * No new branch-target labels are introduced — the constraint method is called BEFORE
+     * the original jump instruction, so no stack-map frames need to be emitted.
+     *
+     * Stack contract:
+     *   Entry:  ..., value
+     *   Exit:   jumps to {@code label} if branch taken, falls through otherwise
+     *           (identical to the original branch instruction)
      */
     private void recordBranchConstraint(int opcode, Label label) {
-        // Create fresh labels for the instrumentation
-        Label willJump = new Label(); // Branch will be taken (symbolic)
-        Label untainted = new Label(); // No symbolic tag (concrete value)
-        Label originalEnd = new Label(); // Merge point after constraint recording
-
-        // Stack at this point: ..., value
-        // Shadow stack: ..., tag
-
-        // Duplicate the value for testing the branch condition twice
+        // Stack: ..., value
         super.visitInsn(DUP);
         // Stack: ..., value, value
-
-        // Peek at the tag from shadow stack to check if it's symbolic
-        shadowLocals.peek(0);
-        // Stack: ..., value, value, tag
-
-        // Check if tag is null (concrete value, no symbolic execution needed)
-        super.visitInsn(DUP);
-        super.visitJumpInsn(IFNULL, untainted);
-        // Stack: ..., value, value, tag
-
-        // Tag is NOT null (symbolic value) - we need to record constraints for both paths
-
-        // Test the branch condition to see which path we're taking
-        super.visitInsn(POP); // Remove the tag from stack
-        // Stack: ..., value, value
-
-        super.visitJumpInsn(opcode, willJump);
-        // Stack: ..., value
-
-        // === Path 1: Branch NOT taken ===
-        // Peek tag again for recording
-        shadowLocals.peek(0);
-        // Stack: ..., value, tag
-
-        // Load opcode
         AsmUtil.pushInt(mv, opcode);
-        // Stack: ..., value, tag, opcode
+        // Stack: ..., value, value, opcode
+        // testAndRecordSingleValueBranch(int value, int opcode): tests condition internally and records constraint
+        super.visitMethodInsn(INVOKESTATIC, PATH_UTILS_INTERNAL_NAME, "testAndRecordSingleValueBranch", "(II)V", false);
+        // Stack: ..., value  (copy and opcode consumed by method)
+        // Emit the original branch — no new labels needed, no VerifyError.
+        super.visitJumpInsn(opcode, label);
+        // Stack: ... (value consumed by branch)
+    }
 
-        // Load branchTaken = false
-        super.visitInsn(ICONST_0);
-        // Stack: ..., value, tag, opcode, false
-
-        // Call PathUtils.recordBranchConstraint(tag, opcode, branchTaken)
-        super.visitMethodInsn(
-                INVOKESTATIC, PATH_UTILS_INTERNAL_NAME, "recordBranchConstraint", "(" + TAG_DESC + "IZ)V", false);
-        // Stack: ..., value
-
-        super.visitJumpInsn(GOTO, originalEnd);
-
-        // === Path 2: Branch WILL be taken ===
-        super.visitLabel(willJump);
-        // Stack: ..., value
-
-        // Peek tag again for recording
-        shadowLocals.peek(0);
-        // Stack: ..., value, tag
-
-        // Load opcode
+    /**
+     * Record a branch constraint for two-value branch instructions (IF_ICMPEQ/LT/GE etc.).
+     * Uses value-based tag lookup for the left operand (v1) via PathUtils.testAndRecordTwoValueBranch.
+     *
+     * No new branch-target labels are introduced — the constraint method is called BEFORE
+     * the original jump instruction, so no stack-map frames need to be emitted.
+     *
+     * Stack contract:
+     *   Entry:  ..., v1, v2
+     *   Exit:   jumps to {@code label} if branch taken, falls through otherwise
+     *           (identical to the original branch instruction)
+     */
+    private void recordTwoValueBranchConstraint(int opcode, Label label) {
+        // Stack: ..., v1, v2
+        super.visitInsn(DUP2);
+        // Stack: ..., v1, v2, v1, v2
         AsmUtil.pushInt(mv, opcode);
-        // Stack: ..., value, tag, opcode
-
-        // Load branchTaken = true
-        super.visitInsn(ICONST_1);
-        // Stack: ..., value, tag, opcode, true
-
-        // Call PathUtils.recordBranchConstraint(tag, opcode, branchTaken)
-        super.visitMethodInsn(
-                INVOKESTATIC, PATH_UTILS_INTERNAL_NAME, "recordBranchConstraint", "(" + TAG_DESC + "IZ)V", false);
-        // Stack: ..., value
-
-        // Now execute the original branch (jump to the user's label)
+        // Stack: ..., v1, v2, v1, v2, opcode
+        // testAndRecordTwoValueBranch(int v1, int v2, int opcode): tests + records constraint
+        super.visitMethodInsn(INVOKESTATIC, PATH_UTILS_INTERNAL_NAME, "testAndRecordTwoValueBranch", "(III)V", false);
+        // Stack: ..., v1, v2  (copies and opcode consumed by method)
+        // Emit the original branch — no new labels needed, no VerifyError.
         super.visitJumpInsn(opcode, label);
-
-        // === Path 3: Untainted (concrete value, no symbolic tag) ===
-        super.visitLabel(untainted);
-        // Stack: ..., value, value, tag (which is null)
-
-        // Clean up: pop the null tag and duplicate value
-        super.visitInsn(POP); // Remove null tag
-        // Stack: ..., value, value
-
-        // Execute normal branch
-        super.visitJumpInsn(opcode, label);
-
-        // === Merge point ===
-        super.visitLabel(originalEnd);
-        // Stack: ..., value
-
-        // Note: The value will be popped by the normal visitJumpInsn flow
+        // Stack: ... (v1, v2 consumed by branch)
     }
 
     // Note: Automatic switch constraint collection methods removed.
     // Switch constraints are now collected manually via PathUtils API.
     // See AutomaticVitruvPathExploration.executeVitruvWithInput() for implementation.
 
+    /**
+     * Comma-separated list of internal class-name prefixes that should have branch constraints
+     * injected.  Only classes whose internal name starts with one of these prefixes will have
+     * {@code testAndRecordSingleValueBranch} / {@code testAndRecordTwoValueBranch} calls emitted.
+     *
+     * <p>Set via {@code -Dgalette.instrument.prefix=mir/routines/,tools/example/} on the JVM
+     * command line.  An empty (or absent) property means "instrument no class", which prevents
+     * infinite recursion and spurious constraints from framework code.
+     *
+     * <p>JDK bootstrap classes and CoCoPath project classes are always excluded regardless.
+     */
+    private static final String[] INSTRUMENT_PREFIXES = loadInstrumentPrefixes();
+
+    private static String[] loadInstrumentPrefixes() {
+        String prop = System.getProperty("galette.instrument.prefix", "");
+        if (prop.isEmpty()) {
+            return new String[0];
+        }
+        return prop.split(",");
+    }
+
+    /**
+     * Returns true when branch constraint injection should be applied to the given class.
+     * The class must:
+     *  1. Not be a JDK bootstrap class (java/, sun/, jdk/, javax/, com/sun/, com/oracle/)
+     *  2. Not be a CoCoPath project class (edu/neu/ccs/prl/galette/) — would cause recursion
+     *  3. Match at least one prefix in {@code galette.instrument.prefix}
+     */
+    private static boolean isAppClass(String owner) {
+        // Always exclude JDK bootstrap classes (can't resolve PathUtils from boot classloader)
+        if (owner.startsWith("java/")
+                || owner.startsWith("sun/")
+                || owner.startsWith("jdk/")
+                || owner.startsWith("javax/")
+                || owner.startsWith("com/sun/")
+                || owner.startsWith("com/oracle/")) {
+            return false;
+        }
+        // Always exclude CoCoPath internals to prevent infinite recursion
+        if (owner.startsWith("edu/neu/ccs/prl/galette/")) {
+            return false;
+        }
+        // Require at least one prefix match
+        for (String prefix : INSTRUMENT_PREFIXES) {
+            if (!prefix.isEmpty() && owner.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     static MethodVisitor newInstance(MethodVisitor mv, MethodNode original, boolean isShadow, String owner) {
         ShadowLocals shadowLocals = ShadowLocals.newInstance(mv, original, isShadow);
-        TagPropagator propagator = new TagPropagator(shadowLocals, shadowLocals);
+        TagPropagator propagator = new TagPropagator(shadowLocals, shadowLocals, isAppClass(owner));
         AnalyzerAdapter analyzer =
                 new AnalyzerAdapter(owner, original.access, original.name, original.desc, propagator);
         IndirectFramePasser iPasser = new IndirectFramePasser(shadowLocals, analyzer, analyzer);
