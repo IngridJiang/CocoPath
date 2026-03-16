@@ -63,7 +63,8 @@ public class AutomaticBrakeMultiVarPathExploration {
                     "[AutomaticBrakeMultiVarPathExploration:main] Starting two-disc brake path exploration...");
             System.out.println(
                     "[AutomaticBrakeMultiVarPathExploration:main] Variables: disc1Profile (-1 to 100), disc1Calib (0 to 100), disc2Profile (-1 to 100), disc2Calib (0 to 100)");
-            System.out.println("[AutomaticBrakeMultiVarPathExploration:main] Expected paths: 81 (3^4: 3 profiles x 3 calibs per disc, 2 discs)");
+            System.out.println(
+                    "[AutomaticBrakeMultiVarPathExploration:main] Expected paths: 81 (3^4: 3 profiles x 3 calibs per disc, 2 discs)");
 
             List<PathExplorer.PathRecord> paths = explorer.exploreMultipleIntegers(initialValues, inputs -> {
                 return executeWithInputs(testInstance, inputs);

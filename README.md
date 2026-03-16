@@ -1,5 +1,29 @@
 # CoCoPath - Concolic Exploration of Consistency-Preserving Paths
 
+---
+
+> **ECMFA 2025 Second Round — Evaluation Data**
+>
+> ### Execution Time — BrakeSystem-ControlSystem Scenario (2 symbolic variables, 10 paths)
+>
+> | Path | Profile  | Calibration  | Constraints | Time (ms) |
+> |-----:|----------|--------------|------------:|----------:|
+> |  P1  | Skip     | —            |           2 |       140 |
+> |  P2  | Off-road | Conservative |           4 |       295 |
+> |  P3  | Off-road | Standard     |           4 |       101 |
+> |  P4  | Off-road | Track        |           3 |       109 |
+> |  P5  | Comfort  | Conservative |           3 |       192 |
+> |  P6  | Comfort  | Standard     |           4 |       120 |
+> |  P7  | Comfort  | Track        |           3 |        89 |
+> |  P8  | Sport    | Conservative |           2 |       161 |
+> |  P9  | Sport    | Standard     |           3 |       107 |
+> | P10  | Sport    | Track        |           2 |        90 |
+>
+> | Paths | Initialisation (ms) | Avg. / Path (ms) | Total (ms) |
+> |------:|--------------------:|-----------------:|-----------:|
+> |    10 |              33,905 |            140.4 |     35,309 |
+---
+
 ## Overview
 
 CoCoPath is a concolic execution framework for systematically exploring execution paths in consistency-preserving model transformations. By combining dynamic taint tracking, concolic execution, and model transformation frameworks, CoCoPath enables automatic path exploration to derive potential target models based on source models, consistency preservation rules (CPRs), and optional domain constraints.
