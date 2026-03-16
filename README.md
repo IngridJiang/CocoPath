@@ -99,11 +99,16 @@ CocoPath/
 │   │       └── vitruvius/
 │   │           ├── AutomaticVitruvPathExploration.java         # Single-variable exploration
 │   │           └── AutomaticVitruvMultiVarPathExploration.java # Multi-variable exploration
-│   └── run-symbolic-execution.sh                 # Execution scripts
+│   └── run-symbolic-execution-adapted.sh         # Execution scripts
 │
-├── amalthea-acset-integration/                   # Vitruvius case study
+├── amalthea-acset-integration/                   # AMALTHEA-ASCET case study
 │   ├── vsum/src/main/java/.../Test.java         # Model transformation entry point
 │   └── consistency/src/main/reactions/           # Consistency preservation rules
+│
+├── tinybrake-integration/                        # BrakeDisc-ControlSystem case study
+│   ├── model/                                    # BrakeSystem / ControlSystem metamodels
+│   ├── consistency/src/main/reactions/           # CPRs for brake-to-control mapping
+│   └── vsum/                                     # VSUM configuration and test entry points
 │
 └── README.md                                      # This file
 ```
@@ -151,39 +156,54 @@ mvn process-test-resources
 cd knarr-runtime
 
 # Interactive mode - choose execution type
-./run-symbolic-execution.sh
+./run-symbolic-execution-adapted.sh
 
 # Direct execution modes:
-./run-symbolic-execution.sh --internal   # Simplified test case
-./run-symbolic-execution.sh --external   # Full Vitruvius transformations
-./run-symbolic-execution.sh --multivar   # Multi-variable exploration (25 paths)
+./run-symbolic-execution-adapted.sh --internal        # Simplified test case (bundled AMALTHEA stub)
+./run-symbolic-execution-adapted.sh --external        # Full Vitruvius transformations (external Amalthea-acset repo)
+./run-symbolic-execution-adapted.sh --multivar        # Multi-variable AMALTHEA exploration (25 paths)
+./run-symbolic-execution-adapted.sh --brake           # BrakeDisc-ControlSystem, single disc (10 paths)
+./run-symbolic-execution-adapted.sh --brake-multivar  # BrakeDisc-ControlSystem, two discs 
 ```
 
 **Windows:**
 ```cmd
-run-symbolic-execution.bat
-run-symbolic-execution.bat internal
-run-symbolic-execution.bat multivar
+run-symbolic-execution-adapted.bat
+run-symbolic-execution-adapted.bat internal
+run-symbolic-execution-adapted.bat multivar
+run-symbolic-execution-adapted.bat brake
+run-symbolic-execution-adapted.bat brake-multivar
 ```
 
 **PowerShell:**
 ```powershell
-.\run-symbolic-execution.ps1
-.\run-symbolic-execution.ps1 -Internal
-.\run-symbolic-execution.ps1 -MultiVar
+.\run-symbolic-execution-adapted.ps1
+.\run-symbolic-execution-adapted.ps1 -Internal
+.\run-symbolic-execution-adapted.ps1 -MultiVar
+.\run-symbolic-execution-adapted.ps1 -Brake
+.\run-symbolic-execution-adapted.ps1 -BrakeMultiVar
 ```
 
 ### Execution Modes
 
-#### Single-Variable Exploration
+#### Single-Variable Exploration (`--internal` / `--external`)
 - Explores one symbolic user decision with 5 possible values
 - Generates 5 execution paths
 - Output: `execution_paths_automatic.json` and model files in `galette-output-automatic-{0..4}/`
 
-#### Multi-Variable Exploration
+#### Multi-Variable Exploration (`--multivar`)
 - Explores TWO symbolic user decisions simultaneously
 - Generates 25 execution paths (5 × 5 combinations)
 - Output: `execution_paths_multivar.json` and models in `galette-output-multivar-{i}_{j}/`
+
+#### Brake Single-Disc (`--brake`)
+- Explores one `BrakeDisc` insertion with 2 symbolic variables: `profileChoice` (4 values) and `calibChoice` (3 values)
+- Generates 10 paths (Skip skips calibration; Off-road/Comfort/Sport × 3 calibration options)
+- Output: `execution_paths_brake.json` and models in `galette-output-brake-{p}_{c}/`
+
+#### Brake Two-Disc (`--brake-multivar`)
+- Explores insertion of two `BrakeDisc` instances simultaneously (4 symbolic variables)
+- Output: `execution_paths_brake_multivar.json` and models in `galette-output-brake-multivar-{p1}_{c1}_{p2}_{c2}/`
 
 ### Expected Output
 
@@ -251,6 +271,24 @@ This enables engineers to:
 - Compare transformation outcomes quantitatively
 - Identify high-impact decision points
 - Understand consequences before committing changes
+
+## Case Study: BrakeDisc-ControlSystem
+
+The TinyBrake case study demonstrates CoCoPath on an automotive brake system scenario:
+
+- **Source model**: `BrakeSystem` containing one or more `BrakeDisc` elements (identified by diameter)
+- **Target model**: `ControlSystem` containing `AxleControlUnit` elements
+
+When a `BrakeDisc` is inserted, the CPR must configure the corresponding `AxleControlUnit`. This requires two sequential user decisions, each modelled as a symbolic integer:
+
+| Variable | Qualified name | Values |
+|---|---|---|
+| `profileChoice` | `CreateAndConfigureAxleUnitRoutine:execute:profileChoice_disc_{diameter}` | 0 = Sport, 1 = Comfort, 2 = Off-road, 3 = Skip |
+| `calibChoice` | `ApplyCalibrationRoutine:execute:calibChoice_disc_{diameter}` | 0 = Standard (±0.0), 1 = Track (+0.5), 2 = Conservative (−0.5) |
+
+When `profileChoice = 3` (Skip), the calibration match block is silently bypassed — `calibChoice` is never exercised for that disc, yielding 10 distinct paths for a single disc (1 + 3×3).
+
+No external repository is needed: the `tinybrake-integration` module is built locally and selected automatically by the `--brake` / `--brake-multivar` flags.
 
 ## Troubleshooting
 
@@ -331,7 +369,7 @@ ls knarr-runtime/target/galette/java/bin/java
 
 # 4. Run simple internal test
 cd knarr-runtime
-./run-symbolic-execution.sh --internal
+./run-symbolic-execution-adapted.sh --internal
 
 # 5. Check output was generated
 ls execution_paths_automatic.json
