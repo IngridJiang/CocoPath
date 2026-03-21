@@ -170,6 +170,9 @@ public class GaletteSymbolicator {
                 // Reuse existing tag for this iteration
                 // Update value mapping for this concrete value
                 valueToTag.put(concreteValue, existingTag);
+                // Register with native interception bridge so intercepted comparisons
+                // involving this concrete value can be recognized as symbolic
+                GalettePathConstraintBridge.registerSymbolicInt(qualifiedName, concreteValue);
 
                 if (DEBUG) {
                     System.out.println("[GaletteSymbolicator:getOrMakeSymbolicInt] Reusing tag for: " + qualifiedName
@@ -204,6 +207,8 @@ public class GaletteSymbolicator {
 
             // Store for reuse in future iterations
             labelToTag.put(qualifiedName, newTag);
+            // Register with native interception bridge
+            GalettePathConstraintBridge.registerSymbolicInt(qualifiedName, concreteValue);
 
             // Record domain constraint [min, max] (only on first iteration)
             // Note: PathUtils.addIntDomainConstraint uses exclusive upper bound
@@ -672,6 +677,8 @@ public class GaletteSymbolicator {
         labelToTag.clear(); // Clear label-to-tag mappings for tag reuse
         mySoln = null;
         GaletteGreenBridge.clearVariableCache();
+        GalettePathConstraintBridge.clearSymbolicRegistries();
+        GalettePathConstraintBridge.resetGaletteConstraints();
         PathUtils.reset();
 
         if (DEBUG) {

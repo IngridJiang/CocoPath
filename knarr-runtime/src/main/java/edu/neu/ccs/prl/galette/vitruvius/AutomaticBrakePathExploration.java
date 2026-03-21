@@ -140,7 +140,7 @@ public class AutomaticBrakePathExploration {
             e.printStackTrace();
         }
 
-        PathConditionWrapper pc = PathUtils.getCurPC();
+        PathConditionWrapper pc = PathUtils.getCurPCWithNativeConstraints();
         System.out.println("[AutomaticBrakePathExploration:execute] Constraints collected: " + pc.size());
         return pc;
     }

@@ -59,11 +59,13 @@ public final class Patcher {
                 writeEntry(zos, entry, content);
             }
         }
+        // Try renameTo first (fast, works on same filesystem / Windows).
+        // Fall back to Files.move which handles cross-filesystem moves (e.g. /tmp -> /workspace in containers).
         if (archive.exists() && !archive.delete()) {
             throw new IOException("Failed to delete unpatched archive: " + archive);
         }
         if (!temp.renameTo(archive)) {
-            throw new IOException("Failed to move patched JAR: " + temp);
+            Files.move(temp.toPath(), archive.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         }
     }
 

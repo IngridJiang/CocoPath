@@ -9,8 +9,14 @@ echo "🚀 Bytecode Interception Test"
 echo "============================="
 echo ""
 
-# Ensure Java 17 is used
-export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+# Ensure Java 17 is used - detect JAVA_HOME if not already set correctly
+if [ ! -x "${JAVA_HOME:-}/bin/java" ]; then
+    if [ -x "/usr/lib/jvm/java-17-openjdk-amd64/bin/java" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+    elif [ -x "/usr/local/sdkman/candidates/java/current/bin/java" ]; then
+        export JAVA_HOME="/usr/local/sdkman/candidates/java/current"
+    fi
+fi
 export PATH="$JAVA_HOME/bin:$PATH"
 
 echo "☕ Java Configuration:"

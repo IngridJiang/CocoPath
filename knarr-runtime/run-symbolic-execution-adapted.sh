@@ -44,6 +44,7 @@ USE_EXTERNAL=false
 USE_MULTIVAR=false
 USE_BRAKE=false
 USE_BRAKE_MULTIVAR=false
+USE_INTERCEPTION=false
 FORCE_REBUILD=false
 EXTERNAL_PATH="/c/Users/10239/Amathea-acset"  # <-- MODIFY THIS for your PC
 INTERACTIVE_MODE=true
@@ -129,13 +130,17 @@ while [[ $# -gt 0 ]]; do
             FORCE_REBUILD=true
             shift
             ;;
+        --interception)
+            USE_INTERCEPTION=true
+            shift
+            ;;
         --external-path)
             EXTERNAL_PATH="$2"
             shift 2
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--internal|--external|--multivar|--brake|--brake-multivar] [--external-path PATH] [--force-rebuild]"
+            echo "Usage: $0 [--internal|--external|--multivar|--brake|--brake-multivar] [--interception] [--external-path PATH] [--force-rebuild]"
             exit 1
             ;;
     esac
@@ -497,6 +502,12 @@ echo "      Using instrumented JVM with Galette agent"
 # PathUtils.addIfComparisonConstraint calls in the reactions (mirroring Amalthea's
 # addSwitchConstraint pattern), so TagPropagator branch instrumentation is not required.
 SYMBOLIC_FLAG=""
+
+# Native bytecode interception: intercepts comparison operations at bytecode level
+if [ "$USE_INTERCEPTION" = true ]; then
+    SYMBOLIC_FLAG="-Dgalette.concolic.interception.enabled=true -Dgalette.concolic.interception.debug=true -Dpath.explorer.debug=true"
+    echo "      Native bytecode interception ENABLED"
+fi
 
 set +e
 "$INSTRUMENTED_JAVA/bin/java" \

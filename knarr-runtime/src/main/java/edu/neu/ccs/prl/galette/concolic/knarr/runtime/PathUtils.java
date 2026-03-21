@@ -3,6 +3,7 @@ package edu.neu.ccs.prl.galette.concolic.knarr.runtime;
 import edu.neu.ccs.prl.galette.concolic.knarr.green.GaletteGreenBridge;
 import edu.neu.ccs.prl.galette.internal.runtime.Tag;
 import java.util.HashSet;
+import java.util.List;
 import za.ac.sun.cs.green.expr.*;
 import za.ac.sun.cs.green.expr.Operation.Operator;
 
@@ -260,9 +261,37 @@ public class PathUtils {
 
     /**
      * Reset the current path condition.
+     * Also flushes any accumulated native interception constraints to prevent carryover.
      */
     public static void resetPC() {
         curPC = new PathConditionWrapper();
+        // Discard native constraints accumulated before this iteration
+        GalettePathConstraintBridge.resetGaletteConstraints();
+    }
+
+    /**
+     * Get the current path condition merged with constraints from native bytecode interception.
+     * When native interception is enabled (galette.concolic.interception.enabled=true),
+     * this flushes constraints collected by the galette-agent's PathUtils via
+     * ComparisonInterceptorVisitor and merges them into the current PathConditionWrapper.
+     *
+     * When interception is not enabled or not available, behaves identically to getCurPC().
+     */
+    public static PathConditionWrapper getCurPCWithNativeConstraints() {
+        PathConditionWrapper pc = getCurPC();
+        if (Boolean.getBoolean("galette.concolic.interception.enabled") && GalettePathConstraintBridge.isAvailable()) {
+            List<Expression> nativeConstraints = GalettePathConstraintBridge.flushGaletteConstraints();
+            if (!nativeConstraints.isEmpty()) {
+                for (Expression expr : nativeConstraints) {
+                    pc.addConstraint(expr);
+                }
+                if (GaletteSymbolicator.DEBUG) {
+                    System.out.println("[PathUtils:getCurPCWithNativeConstraints] Merged " + nativeConstraints.size()
+                            + " native interception constraints");
+                }
+            }
+        }
+        return pc;
     }
 
     /**
