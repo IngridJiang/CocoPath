@@ -67,7 +67,6 @@
         <!-- Vitruvius Amalthea-ASCET Integration -->
         <!-- Option 1: Use internal amalthea-acset-integration module (SIMPLIFIED STUB) -->
         <!-- This requires external Amalthea-acset to be built once for Vitruvius dependencies -->
-        <!--
         <dependency>
             <groupId>edu.neu.ccs.prl.galette</groupId>
             <artifactId>amalthea-acset-consistency</artifactId>
@@ -78,7 +77,6 @@
             <artifactId>amalthea-acset-vsum</artifactId>
             <version>${project.version}</version>
         </dependency>
-        -->
 
         <!-- Option 2 (CURRENT): Use external Amathea-acset repository (FULL VITRUVIUS) -->
         <!-- This provides complete Vitruvius reactions and transformations -->
@@ -94,6 +92,14 @@
         <!-- This provides BrakeSystem domain with multi-variable symbolic exploration -->
         <!-- profileChoice: 0=Sport, 1=Comfort, 2=Off-road, 3=Skip -->
         <!-- calibChoice:   0=Standard (0.0), 1=Track (+0.5), 2=Conservative (-0.5) -->
+
+
+
+
+
+
+
+
 
 
         <!--

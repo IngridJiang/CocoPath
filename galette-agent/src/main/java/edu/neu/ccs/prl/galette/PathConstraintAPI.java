@@ -15,7 +15,7 @@ public class PathConstraintAPI {
      */
     public static List<?> getCurrentConstraints() {
         try {
-            Class<?> pathUtilsClass = Class.forName("edu.neu.ccs.prl.galette.internal.runtime.PathUtils");
+            Class<?> pathUtilsClass = Class.forName("edu.neu.ccs.prl.galette.interception.InterceptionPathUtils");
             java.lang.reflect.Method getCurrentMethod = pathUtilsClass.getMethod("getCurrent");
             return (List<?>) getCurrentMethod.invoke(null);
         } catch (Exception e) {
@@ -30,7 +30,7 @@ public class PathConstraintAPI {
      */
     public static List<?> flushConstraints() {
         try {
-            Class<?> pathUtilsClass = Class.forName("edu.neu.ccs.prl.galette.internal.runtime.PathUtils");
+            Class<?> pathUtilsClass = Class.forName("edu.neu.ccs.prl.galette.interception.InterceptionPathUtils");
             java.lang.reflect.Method flushMethod = pathUtilsClass.getMethod("flush");
             return (List<?>) flushMethod.invoke(null);
         } catch (Exception e) {
@@ -45,7 +45,7 @@ public class PathConstraintAPI {
      */
     public static boolean isAvailable() {
         try {
-            Class.forName("edu.neu.ccs.prl.galette.internal.runtime.PathUtils");
+            Class.forName("edu.neu.ccs.prl.galette.interception.InterceptionPathUtils");
             return true;
         } catch (ClassNotFoundException e) {
             return false;

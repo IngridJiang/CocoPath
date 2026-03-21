@@ -1,4 +1,4 @@
-package edu.neu.ccs.prl.galette.internal.runtime;
+package edu.neu.ccs.prl.galette.interception;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,7 +11,7 @@ import java.util.List;
  *
  * Collected constraints are retrieved via flush() by GalettePathConstraintBridge in knarr-runtime.
  */
-public final class PathUtils {
+public final class InterceptionPathUtils {
 
     private static volatile boolean enabled =
             "true".equals(System.getProperty("galette.concolic.interception.enabled"));
@@ -45,7 +45,9 @@ public final class PathUtils {
                 PATH_CONDITIONS.get().add(new Constraint(v1, v2, "LCMP", result));
             }
             return result;
-        } finally { exitMethod(); }
+        } finally {
+            exitMethod();
+        }
     }
 
     public static int instrumentedFcmpl(float v1, float v2) {
@@ -56,7 +58,9 @@ public final class PathUtils {
                 PATH_CONDITIONS.get().add(new Constraint(v1, v2, "FCMPL", result));
             }
             return result;
-        } finally { exitMethod(); }
+        } finally {
+            exitMethod();
+        }
     }
 
     public static int instrumentedFcmpg(float v1, float v2) {
@@ -67,7 +71,9 @@ public final class PathUtils {
                 PATH_CONDITIONS.get().add(new Constraint(v1, v2, "FCMPG", result));
             }
             return result;
-        } finally { exitMethod(); }
+        } finally {
+            exitMethod();
+        }
     }
 
     public static int instrumentedDcmpl(double v1, double v2) {
@@ -78,7 +84,9 @@ public final class PathUtils {
                 PATH_CONDITIONS.get().add(new Constraint(v1, v2, "DCMPL", result));
             }
             return result;
-        } finally { exitMethod(); }
+        } finally {
+            exitMethod();
+        }
     }
 
     public static int instrumentedDcmpg(double v1, double v2) {
@@ -89,7 +97,9 @@ public final class PathUtils {
                 PATH_CONDITIONS.get().add(new Constraint(v1, v2, "DCMPG", result));
             }
             return result;
-        } finally { exitMethod(); }
+        } finally {
+            exitMethod();
+        }
     }
 
     public static boolean instrumentedIcmpJump(int v1, int v2, String op) {
@@ -97,19 +107,34 @@ public final class PathUtils {
         try {
             boolean result;
             switch (op) {
-                case "EQ": result = v1 == v2; break;
-                case "NE": result = v1 != v2; break;
-                case "LT": result = v1 < v2; break;
-                case "GE": result = v1 >= v2; break;
-                case "GT": result = v1 > v2; break;
-                case "LE": result = v1 <= v2; break;
-                default: result = false;
+                case "EQ":
+                    result = v1 == v2;
+                    break;
+                case "NE":
+                    result = v1 != v2;
+                    break;
+                case "LT":
+                    result = v1 < v2;
+                    break;
+                case "GE":
+                    result = v1 >= v2;
+                    break;
+                case "GT":
+                    result = v1 > v2;
+                    break;
+                case "LE":
+                    result = v1 <= v2;
+                    break;
+                default:
+                    result = false;
             }
             if (isEnabled()) {
                 PATH_CONDITIONS.get().add(new Constraint(v1, v2, op, result ? 1 : 0));
             }
             return result;
-        } finally { exitMethod(); }
+        } finally {
+            exitMethod();
+        }
     }
 
     public static boolean instrumentedAcmpJump(Object v1, Object v2, String op) {
@@ -117,15 +142,22 @@ public final class PathUtils {
         try {
             boolean result;
             switch (op) {
-                case "ACMP_EQ": result = v1 == v2; break;
-                case "ACMP_NE": result = v1 != v2; break;
-                default: result = false;
+                case "ACMP_EQ":
+                    result = v1 == v2;
+                    break;
+                case "ACMP_NE":
+                    result = v1 != v2;
+                    break;
+                default:
+                    result = false;
             }
             if (isEnabled()) {
                 PATH_CONDITIONS.get().add(new Constraint(v1, v2, op, result ? 1 : 0));
             }
             return result;
-        } finally { exitMethod(); }
+        } finally {
+            exitMethod();
+        }
     }
 
     // ===== Access methods (called by GalettePathConstraintBridge via PathConstraintAPI) =====
