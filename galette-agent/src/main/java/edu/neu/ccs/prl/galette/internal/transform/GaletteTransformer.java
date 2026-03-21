@@ -45,7 +45,23 @@ public class GaletteTransformer {
      * <p>
      * Non-null.
      */
-    private static final ExclusionList exclusions = new ExclusionList("java/lang/Object", INTERNAL_PACKAGE_PREFIX);
+    private static final ExclusionList exclusions = new ExclusionList(
+            // ABSOLUTE MINIMAL exclusions - as in working reference implementation
+            "java/lang/Object",
+            INTERNAL_PACKAGE_PREFIX,
+            // Exclude concolic exploration framework
+            "edu/neu/ccs/prl/galette/concolic/",
+            // Exclude Green solver framework
+            "za/ac/sun/cs/green/",
+            "edu/gmu/swe/",
+            // Minimal JVM exclusions to prevent String.hashCode recursion
+            "java/lang/String",
+            "java/lang/StringBuilder",
+            "java/lang/StringBuffer",
+            "java/lang/AbstractStringBuilder",
+            // HashMap to prevent hashCode loops
+            "java/util/HashMap",
+            "java/util/AbstractMap");
 
     private static TransformationCache cache;
 
@@ -53,6 +69,7 @@ public class GaletteTransformer {
         ClassReader cr = new ClassReader(classFileBuffer);
         String className = cr.getClassName();
         TransformationCache currentCache = getCache();
+
         if (exclusions.isExcluded(className) || AsmUtil.isSet(cr.getAccess(), Opcodes.ACC_MODULE)) {
             // Skip excluded classes and module info
             return null;
@@ -118,6 +135,16 @@ public class GaletteTransformer {
         ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
         // Remove computed frames
         ClassVisitor cv = hasFrames ? cw : new FrameRemover(cw);
+
+        // Add comparison interception for bytecode-level constraint collection
+        // Enable for application classes (not internal Galette classes)
+        boolean interceptorEnabled = Boolean.getBoolean("galette.concolic.interception.enabled")
+                || !cn.name.startsWith("edu/neu/ccs/prl/galette/internal/");
+
+        if (interceptorEnabled && !cn.name.startsWith("edu/neu/ccs/prl/galette/internal/")) {
+            cv = new ComparisonInterceptorVisitor(cv);
+        }
+
         // Make the members of certain classes publicly accessible
         if (AccessModifier.isApplicable(cn.name)) {
             cv = new AccessModifier(cv);
