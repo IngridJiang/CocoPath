@@ -88,7 +88,26 @@ public class ComparisonInterceptorVisitor extends ClassVisitor {
                 case Opcodes.IF_ICMPGE:
                 case Opcodes.IF_ICMPGT:
                 case Opcodes.IF_ICMPLE:
-                    // Replace with instrumented version
+                    // Two-operand integer comparison: replace with instrumented version
+                    mv.visitLdcInsn(opcodeToString(opcode));
+                    mv.visitMethodInsn(
+                            Opcodes.INVOKESTATIC,
+                            PATH_UTILS_CLASS,
+                            "instrumentedIcmpJump",
+                            "(IILjava/lang/String;)Z",
+                            false);
+                    mv.visitJumpInsn(Opcodes.IFNE, label);
+                    break;
+
+                case Opcodes.IFEQ:
+                case Opcodes.IFNE:
+                case Opcodes.IFLT:
+                case Opcodes.IFGE:
+                case Opcodes.IFGT:
+                case Opcodes.IFLE:
+                    // Single-operand integer comparison against 0:
+                    // push 0 onto stack and use the two-operand instrumented version
+                    mv.visitInsn(Opcodes.ICONST_0);
                     mv.visitLdcInsn(opcodeToString(opcode));
                     mv.visitMethodInsn(
                             Opcodes.INVOKESTATIC,
@@ -119,16 +138,22 @@ public class ComparisonInterceptorVisitor extends ClassVisitor {
         private String opcodeToString(int opcode) {
             switch (opcode) {
                 case Opcodes.IF_ICMPEQ:
+                case Opcodes.IFEQ:
                     return "EQ";
                 case Opcodes.IF_ICMPNE:
+                case Opcodes.IFNE:
                     return "NE";
                 case Opcodes.IF_ICMPLT:
+                case Opcodes.IFLT:
                     return "LT";
                 case Opcodes.IF_ICMPGE:
+                case Opcodes.IFGE:
                     return "GE";
                 case Opcodes.IF_ICMPGT:
+                case Opcodes.IFGT:
                     return "GT";
                 case Opcodes.IF_ICMPLE:
+                case Opcodes.IFLE:
                     return "LE";
                 case Opcodes.IF_ACMPEQ:
                     return "ACMP_EQ";
