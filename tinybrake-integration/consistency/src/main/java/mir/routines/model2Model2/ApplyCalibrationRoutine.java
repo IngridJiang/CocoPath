@@ -24,9 +24,9 @@ import tools.vitruv.methodologisttemplate.model.model2.AxleControlUnit;
  *   calibLevel &lt;  67  → standard     (offset  0.0)
  *   else              → track        (offset +0.5)
  *
- * Constraint recording follows the Amalthea pattern: after getOrMakeSymbolicInt creates
- * the symbolic tag, PathUtils.addIfComparisonConstraint is called explicitly (via
- * reflection) to record which interval was taken.
+ * When native bytecode interception is enabled (-Dgalette.concolic.interception.enabled=true),
+ * the if-interval comparisons are automatically captured by ComparisonInterceptorVisitor
+ * without explicit constraint recording calls.
  */
 @SuppressWarnings("all")
 public class ApplyCalibrationRoutine extends AbstractRoutine {
@@ -126,35 +126,18 @@ public class ApplyCalibrationRoutine extends AbstractRoutine {
                 }
             }
 
-            // Record which if-interval was taken as a path constraint.
-            // Reads qualified name from the taint tag on symbolicCalibLevel —
-            // same pattern as Amalthea's symbolicVitruviusChoice.
-            try {
-                final Class<?> symbolicClass =
-                        Class.forName("edu.neu.ccs.prl.galette.concolic.knarr.runtime.SymbolicComparison");
-                final Method ifComp = symbolicClass.getMethod(
-                        "symbolicVitruviusIfComparison", Integer.class, String.class, Integer.TYPE);
-                if (symbolicCalibLevel < 33) {
-                    // conservative: calibLevel < 33
-                    ifComp.invoke(null, symbolicCalibLevel, "LT", Integer.valueOf(33));
-                } else if (symbolicCalibLevel < 67) {
-                    // standard: 33 <= calibLevel < 67
-                    ifComp.invoke(null, symbolicCalibLevel, "GE", Integer.valueOf(33));
-                    ifComp.invoke(null, symbolicCalibLevel, "LT", Integer.valueOf(67));
-                } else {
-                    // track: calibLevel >= 67
-                    ifComp.invoke(null, symbolicCalibLevel, "GE", Integer.valueOf(67));
-                }
-            } catch (final Exception e) {
-                InputOutput.<String>println("[Reaction] Branch constraint recording failed: " + e.getMessage());
-            }
-
-            // Interval dispatch — structure unchanged.
+            // Interval dispatch — native bytecode interception captures these comparisons
+            // automatically when -Dgalette.concolic.interception.enabled=true is set.
+            InputOutput.<String>println("[Reaction:ApplyCalibration] symbolicCalibLevel=" + symbolicCalibLevel
+                    + " (class=" + symbolicCalibLevel.getClass().getSimpleName() + ")");
             if (symbolicCalibLevel < 33) {
+                InputOutput.<String>println("[Reaction:ApplyCalibration] -> conservative branch");
                 axleUnit.setCalibrationOffset(-0.5); // conservative
             } else if (symbolicCalibLevel < 67) {
+                InputOutput.<String>println("[Reaction:ApplyCalibration] -> standard branch");
                 axleUnit.setCalibrationOffset(0.0); // standard
             } else {
+                InputOutput.<String>println("[Reaction:ApplyCalibration] -> track branch");
                 axleUnit.setCalibrationOffset(0.5); // track
             }
             double _absDecelThreshold = axleUnit.getAbsDecelThreshold();

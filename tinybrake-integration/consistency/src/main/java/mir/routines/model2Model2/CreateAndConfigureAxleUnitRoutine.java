@@ -24,10 +24,9 @@ import tools.vitruv.methodologisttemplate.model.model.BrakeSystem;
  *   34 &lt;= aggressiveness &lt;  67   → comfort  (multiplier 0.85)
  *   67 &lt;= aggressiveness &lt;= 100  → sport    (multiplier 1.20)
  *
- * Constraint recording follows the Amalthea pattern: after getOrMakeSymbolicInt creates
- * the symbolic tag, PathUtils.addIfComparisonConstraint is called explicitly (via
- * reflection) to record which interval was taken.  This mirrors how Amalthea calls
- * addSwitchConstraint after getOrMakeSymbolicInt, but for if-interval branches.
+ * When native bytecode interception is enabled (-Dgalette.concolic.interception.enabled=true),
+ * the if-interval comparisons are automatically captured by ComparisonInterceptorVisitor
+ * without explicit constraint recording calls.
  */
 @SuppressWarnings("all")
 public class CreateAndConfigureAxleUnitRoutine extends AbstractRoutine {
@@ -96,42 +95,24 @@ public class CreateAndConfigureAxleUnitRoutine extends AbstractRoutine {
                 }
             }
 
-            // Record which if-interval was taken as a path constraint.
-            // Mirrors Amalthea's symbolicVitruviusChoice pattern: reads the qualified name
-            // from the taint tag on the symbolic integer rather than using an explicit string.
-            try {
-                final Class<?> symbolicClass =
-                        Class.forName("edu.neu.ccs.prl.galette.concolic.knarr.runtime.SymbolicComparison");
-                final Method ifComp = symbolicClass.getMethod(
-                        "symbolicVitruviusIfComparison", Integer.class, String.class, Integer.TYPE);
-                if (symbolicAggressiveness < 0) {
-                    // skip branch: aggressiveness < 0
-                    ifComp.invoke(null, symbolicAggressiveness, "LT", Integer.valueOf(0));
-                } else if (symbolicAggressiveness < 34) {
-                    // off_road: 0 <= aggressiveness < 34
-                    ifComp.invoke(null, symbolicAggressiveness, "GE", Integer.valueOf(0));
-                    ifComp.invoke(null, symbolicAggressiveness, "LT", Integer.valueOf(34));
-                } else if (symbolicAggressiveness < 67) {
-                    // comfort: 34 <= aggressiveness < 67
-                    ifComp.invoke(null, symbolicAggressiveness, "GE", Integer.valueOf(34));
-                    ifComp.invoke(null, symbolicAggressiveness, "LT", Integer.valueOf(67));
-                } else {
-                    // sport: aggressiveness >= 67
-                    ifComp.invoke(null, symbolicAggressiveness, "GE", Integer.valueOf(67));
-                }
-            } catch (final Exception e) {
-                InputOutput.<String>println("[Reaction] Branch constraint recording failed: " + e.getMessage());
-            }
-
-            // Interval dispatch — structure unchanged; if-comparisons remain for actual routing.
+            // Interval dispatch — native bytecode interception captures these comparisons
+            // automatically when -Dgalette.concolic.interception.enabled=true is set.
+            InputOutput.<String>println(
+                    "[Reaction:CreateAndConfigureAxleUnit] symbolicAggressiveness=" + symbolicAggressiveness
+                            + " (class=" + symbolicAggressiveness.getClass().getSimpleName() + ")");
             if (symbolicAggressiveness >= 0) {
                 if (symbolicAggressiveness < 34) {
+                    InputOutput.<String>println("[Reaction:CreateAndConfigureAxleUnit] -> off_road branch");
                     _routinesFacade.createOffRoadAxleUnit(system, sourceDisc);
                 } else if (symbolicAggressiveness < 67) {
+                    InputOutput.<String>println("[Reaction:CreateAndConfigureAxleUnit] -> comfort branch");
                     _routinesFacade.createComfortAxleUnit(system, sourceDisc);
                 } else {
+                    InputOutput.<String>println("[Reaction:CreateAndConfigureAxleUnit] -> sport branch");
                     _routinesFacade.createSportAxleUnit(system, sourceDisc);
                 }
+            } else {
+                InputOutput.<String>println("[Reaction:CreateAndConfigureAxleUnit] -> skip branch (< 0)");
             }
             // applyCalibration's match silently fails (no-op) when skip was chosen
             // (no AxleControlUnit correspondence exists for this disc).

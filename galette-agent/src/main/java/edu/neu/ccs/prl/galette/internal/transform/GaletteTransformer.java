@@ -136,13 +136,20 @@ public class GaletteTransformer {
         // Remove computed frames
         ClassVisitor cv = hasFrames ? cw : new FrameRemover(cw);
 
-        // Add comparison interception for bytecode-level constraint collection
-        // Enable for application classes (not internal Galette classes)
-        boolean interceptorEnabled = Boolean.getBoolean("galette.concolic.interception.enabled")
-                || !cn.name.startsWith("edu/neu/ccs/prl/galette/internal/");
-
-        if (interceptorEnabled && !cn.name.startsWith("edu/neu/ccs/prl/galette/internal/")) {
-            cv = new ComparisonInterceptorVisitor(cv);
+        // Add comparison interception for bytecode-level constraint collection.
+        // Only enabled when explicitly requested via system property.
+        // At jlink time the property is not set, so JDK classes are not intercepted.
+        // At runtime the agent reads the property and intercepts application classes.
+        if (Boolean.getBoolean("galette.concolic.interception.enabled")
+                && !cn.name.startsWith("edu/neu/ccs/prl/galette/internal/")) {
+            // For application classes (not JDK/internal), also intercept single-operand jumps
+            // (IFEQ/IFLT/etc.) which capture comparisons like `if (x < 0)`.
+            boolean isApplicationClass = !cn.name.startsWith("java/")
+                    && !cn.name.startsWith("javax/")
+                    && !cn.name.startsWith("sun/")
+                    && !cn.name.startsWith("jdk/")
+                    && !cn.name.startsWith("com/sun/");
+            cv = new ComparisonInterceptorVisitor(cv, isApplicationClass);
         }
 
         // Make the members of certain classes publicly accessible

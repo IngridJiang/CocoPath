@@ -56,7 +56,6 @@ public final class GaletteAgent {
                 ProtectionDomain protectionDomain,
                 byte[] classFileBuffer) {
             if (classBeingRedefined != null) {
-                // The class is being redefined or retransformed
                 return null;
             }
             return transformer.transform(classFileBuffer, false);

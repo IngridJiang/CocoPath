@@ -15,23 +15,34 @@ public class ComparisonInterceptorVisitor extends ClassVisitor {
 
     private static final String PATH_UTILS_CLASS = "edu/neu/ccs/prl/galette/internal/runtime/PathUtils";
 
+    /**
+     * When true, also intercept single-operand jumps (IFEQ/IFNE/IFLT/IFGE/IFGT/IFLE).
+     * Only safe for application classes — enabling this for JDK classes causes JVM crashes.
+     */
+    private final boolean interceptSingleOperandJumps;
+
     public ComparisonInterceptorVisitor(ClassVisitor cv) {
+        this(cv, false);
+    }
+
+    public ComparisonInterceptorVisitor(ClassVisitor cv, boolean interceptSingleOperandJumps) {
         super(GaletteTransformer.ASM_VERSION, cv);
-        // System.out.println("🔍 ComparisonInterceptorVisitor created for class transformation");
+        this.interceptSingleOperandJumps = interceptSingleOperandJumps;
     }
 
     @Override
     public MethodVisitor visitMethod(
             int access, String name, String descriptor, String signature, String[] exceptions) {
         MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
-        return new ComparisonMethodVisitor(mv);
+        return new ComparisonMethodVisitor(mv, interceptSingleOperandJumps);
     }
 
     private static class ComparisonMethodVisitor extends MethodVisitor {
+        private final boolean interceptSingleOperandJumps;
 
-        public ComparisonMethodVisitor(MethodVisitor mv) {
+        public ComparisonMethodVisitor(MethodVisitor mv, boolean interceptSingleOperandJumps) {
             super(GaletteTransformer.ASM_VERSION, mv);
-            // System.out.println("🔍 ComparisonMethodVisitor created for method transformation");
+            this.interceptSingleOperandJumps = interceptSingleOperandJumps;
         }
 
         @Override
@@ -105,17 +116,21 @@ public class ComparisonInterceptorVisitor extends ClassVisitor {
                 case Opcodes.IFGE:
                 case Opcodes.IFGT:
                 case Opcodes.IFLE:
-                    // Single-operand integer comparison against 0:
-                    // push 0 onto stack and use the two-operand instrumented version
-                    mv.visitInsn(Opcodes.ICONST_0);
-                    mv.visitLdcInsn(opcodeToString(opcode));
-                    mv.visitMethodInsn(
-                            Opcodes.INVOKESTATIC,
-                            PATH_UTILS_CLASS,
-                            "instrumentedIcmpJump",
-                            "(IILjava/lang/String;)Z",
-                            false);
-                    mv.visitJumpInsn(Opcodes.IFNE, label);
+                    if (interceptSingleOperandJumps) {
+                        // Single-operand integer comparison against 0:
+                        // push 0 onto stack and use the two-operand instrumented version
+                        mv.visitInsn(Opcodes.ICONST_0);
+                        mv.visitLdcInsn(opcodeToString(opcode));
+                        mv.visitMethodInsn(
+                                Opcodes.INVOKESTATIC,
+                                PATH_UTILS_CLASS,
+                                "instrumentedIcmpJump",
+                                "(IILjava/lang/String;)Z",
+                                false);
+                        mv.visitJumpInsn(Opcodes.IFNE, label);
+                    } else {
+                        super.visitJumpInsn(opcode, label);
+                    }
                     break;
 
                 case Opcodes.IF_ACMPEQ:
