@@ -93,10 +93,12 @@ public final class GaletteAgent {
                 ClassLoader loader, String className, Class<?> classBeingRedefined, ProtectionDomain pd, byte[] buf) {
             if (classBeingRedefined != null || className == null || isExcluded(className)) return null;
             try {
-                // TEMPORARY: test if even a no-op re-parse causes the hang
+                // Use ClassWriter(cr, 0) to copy frames verbatim from the original class.
+                // COMPUTE_MAXS triggers getCommonSuperClass() which cascades into loading
+                // the Vitruvius class hierarchy during transformation → classloader deadlock.
                 ClassReader cr = new ClassReader(buf);
-                ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
-                cr.accept(cw, ClassReader.EXPAND_FRAMES); // no interception visitor - just re-serialize
+                ClassWriter cw = new ClassWriter(cr, 0);
+                cr.accept(new InterceptionClassVisitor(cw), 0);
                 return cw.toByteArray();
             } catch (Throwable t) {
                 return null;
@@ -130,6 +132,13 @@ public final class GaletteAgent {
         private static final class InterceptionMethodVisitor extends MethodVisitor {
             InterceptionMethodVisitor(MethodVisitor mv) {
                 super(Opcodes.ASM9, mv);
+            }
+
+            @Override
+            public void visitMaxs(int maxStack, int maxLocals) {
+                // Pad maxStack: our IF_ICMP* replacement pushes an extra String (LDC)
+                // before the INVOKESTATIC, temporarily increasing stack depth by 1.
+                super.visitMaxs(maxStack + 2, maxLocals);
             }
 
             @Override
