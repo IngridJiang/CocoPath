@@ -63,9 +63,18 @@ The framework provides **concolic execution** (combined concrete + symbolic exec
 - **Key Classes**:
   - `GaletteSymbolicator` - Creates and manages symbolic values with tag reuse
   - `PathExplorer` - Orchestrates systematic path exploration
-  - `PathUtils` - Manages path conditions and constraints
-  - `SymbolicComparison` - Records constraints from Vitruvius reactions
+  - `PathUtils` - Manages path conditions and constraints (incl. native interception merge)
+  - `GalettePathConstraintBridge` - Bridges native interception constraints to Green expressions
+  - `SymbolicComparison` - Records constraints from Vitruvius reactions (explicit mode)
   - `Z3ConstraintSolver` - Interfaces with Z3 for constraint solving
+
+#### Native Bytecode Interception (galette-agent)
+- **Purpose**: Automatic constraint collection from comparison bytecodes
+- **Location**: `galette-agent/src/main/java/edu/neu/ccs/prl/galette/`
+- **Key Classes**:
+  - `GaletteAgent.ComparisonInterceptionTransformer` - Second-pass bytecode transformer
+  - `InterceptionPathUtils` - Thread-safe constraint recording (non-module package)
+  - `PathConstraintAPI` - Reflection-based access to interception constraints
 
 #### Vitruvius Integration
 - **Purpose**: Provides real-world model transformation scenarios
@@ -73,44 +82,63 @@ The framework provides **concolic execution** (combined concrete + symbolic exec
 - **Location**: `amalthea-acset-integration/`
 - Consistency preservation rules require user decisions that cannot be resolved automatically
 
-### Constraint Collection Approach
+### Constraint Collection Approaches
 
-CoCoPath employs a **CPR-level constraint registration mechanism** that makes decision semantics explicit at the transformation logic level:
+CoCoPath supports two constraint collection modes:
 
-1. **Symbolic Variable Registration**: Vitruvius reactions call `GaletteSymbolicator.getOrMakeSymbolicInt()` to create or reuse symbolic tags
-2. **Constraint Recording**: Reactions invoke `SymbolicComparison.symbolicVitruviusChoice()` to record path constraints
-3. **Tag Reuse**: Qualified names (e.g., "CreateAscetTaskRoutine:execute:userChoice_forTask_task1") enable tag reuse across iterations
+#### 1. Explicit Constraint Registration (default)
+Reactions explicitly call constraint recording methods:
+1. **Symbolic Variable Registration**: `GaletteSymbolicator.getOrMakeSymbolicInt()` creates/reuses symbolic tags
+2. **Constraint Recording**: `SymbolicComparison.symbolicVitruviusChoice()` records path constraints
+3. **Tag Reuse**: Qualified names enable tag reuse across iterations
 
-This approach prioritizes framework compatibility and reliability over full automation, avoiding bytecode verification issues while maintaining systematic path exploration capabilities.
+#### 2. Native Bytecode Interception (`--interception` flag)
+Automatically intercepts comparison bytecodes in reaction classes without explicit constraint calls:
+1. A second-pass `ClassFileTransformer` observes `IF_ICMP*` and `IFEQ/IFLT/IFGE/IFGT/IFLE/IFNE` bytecodes
+2. Uses a **DUP + void-record** strategy: duplicates comparison operands, records them via `InterceptionPathUtils.recordIcmp()`, then executes the original comparison unchanged
+3. Constraints are bridged to Green expressions via `GalettePathConstraintBridge`
+4. `PathUtils.getCurPCWithNativeConstraints()` merges native constraints with any explicit constraints
+
+This approach preserves the original bytecode stack layout (no frame invalidation) and avoids classloader deadlocks by using `ClassWriter(cr, 0)` without frame recomputation.
+
+Run with:
+```bash
+./run-symbolic-execution-adapted.sh --brake --interception
+```
 
 ## Project Structure
 
 ```
 CocoPath/
-├── knarr-runtime/
-│   ├── src/main/java/
-│   │   └── edu/neu/ccs/prl/galette/
-│   │       ├── concolic/knarr/runtime/
-│   │       │   ├── GaletteSymbolicator.java      # Symbolic value creation with tag reuse
-│   │       │   ├── PathExplorer.java             # Systematic path exploration
-│   │       │   ├── PathUtils.java                # Path constraint management
-│   │       │   ├── SymbolicComparison.java       # Constraint recording from reactions
-│   │       │   └── Z3ConstraintSolver.java       # Z3 SMT solver integration
-│   │       └── vitruvius/
-│   │           ├── AutomaticVitruvPathExploration.java         # Single-variable exploration
-│   │           └── AutomaticVitruvMultiVarPathExploration.java # Multi-variable exploration
-│   └── run-symbolic-execution-adapted.sh         # Execution scripts
+├── galette-agent/                                 # Galette bytecode instrumentation agent
+│   └── src/main/java/edu/neu/ccs/prl/galette/
+│       ├── PathConstraintAPI.java                 # Public API for interception constraints
+│       ├── interception/
+│       │   └── InterceptionPathUtils.java         # Constraint recording (non-module package)
+│       └── internal/
+│           ├── agent/GaletteAgent.java            # Agent entry + interception transformer
+│           ├── patch/Patcher.java                 # JAR patching for jlink
+│           └── transform/GaletteTransformer.java  # First-pass bytecode transformer
 │
-├── amalthea-acset-integration/                   # AMALTHEA-ASCET case study
-│   ├── vsum/src/main/java/.../Test.java         # Model transformation entry point
-│   └── consistency/src/main/reactions/           # Consistency preservation rules
+├── knarr-runtime/                                 # Symbolic execution runtime
+│   ├── src/main/java/edu/neu/ccs/prl/galette/
+│   │   ├── concolic/knarr/runtime/
+│   │   │   ├── GaletteSymbolicator.java           # Symbolic value creation with tag reuse
+│   │   │   ├── GalettePathConstraintBridge.java   # Native constraint → Green expression bridge
+│   │   │   ├── PathExplorer.java                  # Systematic path exploration
+│   │   │   ├── PathUtils.java                     # Path constraint management
+│   │   │   ├── SymbolicComparison.java            # Explicit constraint recording
+│   │   │   └── Z3ConstraintSolver.java            # Z3 SMT solver integration
+│   │   └── vitruvius/
+│   │       └── AutomaticBrakePathExploration.java # Brake case study exploration
+│   ├── src/test/java/.../
+│   │   ├── NativeInterceptionExplorationTest.java # End-to-end interception test
+│   │   └── testexamples/SimpleReaction.java       # Test reaction for interception
+│   └── run-symbolic-execution-adapted.sh          # Main execution script
 │
-├── tinybrake-integration/                        # BrakeDisc-ControlSystem case study
-│   ├── model/                                    # BrakeSystem / ControlSystem metamodels
-│   ├── consistency/src/main/reactions/           # CPRs for brake-to-control mapping
-│   └── vsum/                                     # VSUM configuration and test entry points
-│
-└── README.md                                      # This file
+├── amalthea-acset-integration/                    # AMALTHEA-ASCET case study
+├── tinybrake-integration/                         # BrakeDisc-ControlSystem case study
+└── README.md
 ```
 
 ## Running CoCoPath
@@ -163,7 +191,8 @@ cd knarr-runtime
 ./run-symbolic-execution-adapted.sh --external        # Full Vitruvius transformations (external Amalthea-acset repo)
 ./run-symbolic-execution-adapted.sh --multivar        # Multi-variable AMALTHEA exploration (25 paths)
 ./run-symbolic-execution-adapted.sh --brake           # BrakeDisc-ControlSystem, single disc (10 paths)
-./run-symbolic-execution-adapted.sh --brake-multivar  # BrakeDisc-ControlSystem, two discs 
+./run-symbolic-execution-adapted.sh --brake --interception  # Same, with native bytecode interception
+./run-symbolic-execution-adapted.sh --brake-multivar  # BrakeDisc-ControlSystem, two discs
 ```
 
 **Windows:**
@@ -407,14 +436,15 @@ Based on the ECMFA-20 paper evaluation:
 
 ## Limitations
 
-- **Manual Constraint Registration**: Requires explicit constraint recording in CPRs (future work: automatic weaving)
+- **Native Interception Filtering**: The `--interception` mode currently captures all comparisons in `mir/` classes (including framework bookkeeping), producing more constraints than needed. Constraint filtering needs refinement to only retain comparisons involving symbolic variables.
+- **Domain Constraints**: Must be manually specified based on domain knowledge
 - **Third-party Libraries**: Cannot track decisions in external code
 - **Runtime Overhead**: Dynamic taint tracking introduces performance cost
-- **Domain Constraints**: Must be manually specified based on domain knowledge
+- **jlink Compatibility**: The `galette-instrument` module must be built from a clean `galette-agent` (without interception modifications). The runtime agent adds interception support separately.
 
 ## Future Work
 
-- Bytecode-level constraint extraction for full automation
+- Improve native interception constraint filtering to match explicit registration accuracy (10 vs 5 paths currently)
 - Support for additional transformation frameworks beyond Vitruvius
 - Optimization of taint tracking overhead
 - Integration with model verification techniques

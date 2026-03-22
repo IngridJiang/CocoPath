@@ -11,15 +11,26 @@ This document records the architectural history of CocoPath by classifying each 
 | **KNARR_ORIGINAL** | Original Knarr class from [gmu-swe/knarr](https://github.com/gmu-swe/knarr) (uses Phosphor imports) |
 | **KNARR_GALETTE** | New class integrating Knarr concepts with Galette APIs (replaces Phosphor with Galette) |
 | **COCOPATH_VITRUVIUS** | New class for Vitruvius reactions tracking use case |
+| **COCOPATH_INTERCEPTION** | New class for native bytecode interception of comparisons |
 
 ---
 
 ## galette-agent Module
 
+### edu.neu.ccs.prl.galette (public API)
+| Class | Origin | Notes |
+|-------|--------|-------|
+| PathConstraintAPI.java | COCOPATH_INTERCEPTION | Reflection-based access to interception constraints |
+
+### edu.neu.ccs.prl.galette.interception
+| Class | Origin | Notes |
+|-------|--------|-------|
+| InterceptionPathUtils.java | COCOPATH_INTERCEPTION | Thread-safe constraint recording; in non-module package for bootclasspath loading |
+
 ### edu.neu.ccs.prl.galette.internal.agent
 | Class | Origin | Notes |
 |-------|--------|-------|
-| GaletteAgent.java | GALETTE_ORIGINAL | JVM agent entry point |
+| GaletteAgent.java | GALETTE_ORIGINAL (modified) | Added ComparisonInterceptionTransformer as second-pass bytecode transformer |
 
 ### edu.neu.ccs.prl.galette.internal.patch
 | Class | Origin | Notes |
@@ -212,6 +223,7 @@ All test classes are **GALETTE_ORIGINAL**.
 | **StringSymbolicTracker.java** | **KNARR_GALETTE** | String symbolic tracking |
 | **SymbolicComparison.java** | **COCOPATH_VITRUVIUS** | Vitruvius-specific constraint collection |
 | **Z3ConstraintSolver.java** | **KNARR_GALETTE** | Z3 SMT solver integration |
+| **GalettePathConstraintBridge.java** | **COCOPATH_INTERCEPTION** | Bridges native interception constraints to Green expressions |
 
 ### edu.neu.ccs.prl.galette.concolic.knarr.compat
 | Class | Origin | Notes |
