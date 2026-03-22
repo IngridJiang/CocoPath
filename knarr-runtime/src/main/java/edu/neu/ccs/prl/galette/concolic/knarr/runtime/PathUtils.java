@@ -760,6 +760,77 @@ public class PathUtils {
         }
     }
 
+    // ===== Tag-based branch constraint recording (expression propagation) =====
+
+    /**
+     * Test the single-value branch condition and record constraint using the shadow tag directly.
+     * This avoids the fragile value-based tag lookup used by {@link #testAndRecordSingleValueBranch}.
+     *
+     * <p>Called from bytecode instrumentation when expression propagation is active.
+     *
+     * @param value  the concrete int value tested by the branch
+     * @param tag    the shadow tag from the operand stack (may be null)
+     * @param opcode the single-value branch opcode (IFEQ=153 .. IFLE=158)
+     */
+    public static void testAndRecordSingleValueBranchWithTag(int value, Tag tag, int opcode) {
+        if (tag == null || tag.isEmpty()) return;
+        Expression varExpr = GaletteSymbolicator.getExpressionForTag(tag);
+        if (varExpr == null) return;
+        boolean taken = testSingleValueCondition(value, opcode);
+        Operator op = getOperatorForBranchOpcode(opcode, taken);
+        if (op == null) return;
+        getCurPC().addConstraint(new BinaryOperation(op, varExpr, new IntConstant(0)));
+        if (GaletteSymbolicator.DEBUG) {
+            System.out.println("[PathUtils:testAndRecordSingleValueBranchWithTag] Recorded: " + varExpr + " " + op
+                    + " 0 (opcode=" + opcode + ", taken=" + taken + ")");
+        }
+    }
+
+    /**
+     * Test the two-value branch condition and record constraint using shadow tags directly.
+     * This avoids the fragile value-based tag lookup used by {@link #testAndRecordTwoValueBranch}.
+     *
+     * <p>Called from bytecode instrumentation when expression propagation is active.
+     * Either or both operands may be symbolic.
+     *
+     * @param v1       left operand concrete value
+     * @param v2       right operand concrete value
+     * @param leftTag  shadow tag for left operand (may be null)
+     * @param rightTag shadow tag for right operand (may be null)
+     * @param opcode   the IF_ICMP* opcode (IF_ICMPEQ=159 .. IF_ICMPLE=164)
+     */
+    public static void testAndRecordTwoValueBranchWithTag(int v1, int v2, Tag leftTag, Tag rightTag, int opcode) {
+        Expression leftExpr = resolveExpression(leftTag, v1);
+        Expression rightExpr = resolveExpression(rightTag, v2);
+
+        // At least one side must be symbolic for a meaningful constraint
+        if (leftExpr instanceof IntConstant && rightExpr instanceof IntConstant) {
+            return;
+        }
+
+        boolean taken = testTwoValueCondition(v1, v2, opcode);
+        Operator op = getTwoValueOperatorForOpcode(opcode, taken);
+        if (op == null) return;
+        getCurPC().addConstraint(new BinaryOperation(op, leftExpr, rightExpr));
+        if (GaletteSymbolicator.DEBUG) {
+            System.out.println("[PathUtils:testAndRecordTwoValueBranchWithTag] Recorded: " + leftExpr + " " + op + " "
+                    + rightExpr + " (opcode=" + opcode + ", taken=" + taken + ")");
+        }
+    }
+
+    /**
+     * Resolve a tag to its Green expression, or create an IntConstant for the concrete value.
+     */
+    private static Expression resolveExpression(Tag tag, int concreteValue) {
+        if (tag != null && !tag.isEmpty()) {
+            Expression expr = GaletteSymbolicator.getExpressionForTag(tag);
+            if (expr != null) {
+                return expr;
+            }
+        }
+        return new IntConstant(concreteValue);
+    }
+
     /**
      * Convert a two-value branch opcode (IF_ICMP*) to a Green operator.
      *

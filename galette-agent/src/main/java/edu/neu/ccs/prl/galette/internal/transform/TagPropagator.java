@@ -165,27 +165,38 @@ class TagPropagator extends MethodVisitor {
                 shadowLocals.performOperation(opcode, 2, 2);
                 break;
             case IADD:
-            case FADD:
             case ISUB:
-            case FSUB:
             case IMUL:
-            case FMUL:
             case IDIV:
-            case FDIV:
             case IREM:
-            case FREM:
             case ISHL:
             case ISHR:
             case IUSHR:
             case IAND:
             case IOR:
             case IXOR:
+                // ..., value1, value2 -> ..., result
+                if (shouldRecordBranchConstraints()) {
+                    // Expression-aware propagation: build Green AST for the result
+                    propagateBinaryIntExpression(opcode);
+                } else {
+                    shadowLocals.peek(1);
+                    shadowLocals.peek(0);
+                    Handle.TAG_UNION.accept(mv);
+                    shadowLocals.pop(2);
+                    shadowLocals.push();
+                }
+                break;
+            case FADD:
+            case FSUB:
+            case FMUL:
+            case FDIV:
+            case FREM:
             case FCMPL:
             case FCMPG:
-                // ..., value1, value2 -> ..., result
+                // ..., value1, value2 -> ..., result  (float ops: TAG_UNION only)
                 shadowLocals.peek(1);
                 shadowLocals.peek(0);
-                // ..., value1, value2, tag1, tag2
                 Handle.TAG_UNION.accept(mv);
                 shadowLocals.pop(2);
                 shadowLocals.push();
@@ -231,6 +242,12 @@ class TagPropagator extends MethodVisitor {
                 shadowLocals.push();
                 break;
             case Opcodes.INEG:
+                // ..., value -> ..., result
+                if (shouldRecordBranchConstraints()) {
+                    propagateUnaryIntExpression(opcode);
+                }
+                // else: no shadow change needed (tag stays as-is for dependency tracking)
+                break;
             case Opcodes.FNEG:
             case Opcodes.I2F:
             case Opcodes.F2I:
@@ -782,7 +799,8 @@ class TagPropagator extends MethodVisitor {
 
     /**
      * Record a branch constraint for single-value branch instructions (IFEQ, IFLT, IFGE etc.).
-     * Uses value-based tag lookup via PathUtils.testAndRecordSingleValueBranch.
+     * Uses shadow tag directly via PathUtils.testAndRecordSingleValueBranchWithTag,
+     * avoiding the fragile value-based tag lookup.
      *
      * No new branch-target labels are introduced — the constraint method is called BEFORE
      * the original jump instruction, so no stack-map frames need to be emitted.
@@ -796,11 +814,17 @@ class TagPropagator extends MethodVisitor {
         // Stack: ..., value
         super.visitInsn(DUP);
         // Stack: ..., value, value
+        shadowLocals.peek(0);
+        // Stack: ..., value, value, tag
         AsmUtil.pushInt(mv, opcode);
-        // Stack: ..., value, value, opcode
-        // testAndRecordSingleValueBranch(int value, int opcode): tests condition internally and records constraint
-        super.visitMethodInsn(INVOKESTATIC, PATH_UTILS_INTERNAL_NAME, "testAndRecordSingleValueBranch", "(II)V", false);
-        // Stack: ..., value  (copy and opcode consumed by method)
+        // Stack: ..., value, value, tag, opcode
+        super.visitMethodInsn(
+                INVOKESTATIC,
+                PATH_UTILS_INTERNAL_NAME,
+                "testAndRecordSingleValueBranchWithTag",
+                "(I" + TAG_DESC + "I)V",
+                false);
+        // Stack: ..., value  (copy, tag, opcode consumed by method)
         // Emit the original branch — no new labels needed, no VerifyError.
         super.visitJumpInsn(opcode, label);
         // Stack: ... (value consumed by branch)
@@ -808,7 +832,8 @@ class TagPropagator extends MethodVisitor {
 
     /**
      * Record a branch constraint for two-value branch instructions (IF_ICMPEQ/LT/GE etc.).
-     * Uses value-based tag lookup for the left operand (v1) via PathUtils.testAndRecordTwoValueBranch.
+     * Uses shadow tags directly via PathUtils.testAndRecordTwoValueBranchWithTag,
+     * avoiding the fragile value-based tag lookup.
      *
      * No new branch-target labels are introduced — the constraint method is called BEFORE
      * the original jump instruction, so no stack-map frames need to be emitted.
@@ -822,14 +847,83 @@ class TagPropagator extends MethodVisitor {
         // Stack: ..., v1, v2
         super.visitInsn(DUP2);
         // Stack: ..., v1, v2, v1, v2
+        shadowLocals.peek(1);
+        // Stack: ..., v1, v2, v1, v2, leftTag
+        shadowLocals.peek(0);
+        // Stack: ..., v1, v2, v1, v2, leftTag, rightTag
         AsmUtil.pushInt(mv, opcode);
-        // Stack: ..., v1, v2, v1, v2, opcode
-        // testAndRecordTwoValueBranch(int v1, int v2, int opcode): tests + records constraint
-        super.visitMethodInsn(INVOKESTATIC, PATH_UTILS_INTERNAL_NAME, "testAndRecordTwoValueBranch", "(III)V", false);
-        // Stack: ..., v1, v2  (copies and opcode consumed by method)
+        // Stack: ..., v1, v2, v1, v2, leftTag, rightTag, opcode
+        super.visitMethodInsn(
+                INVOKESTATIC,
+                PATH_UTILS_INTERNAL_NAME,
+                "testAndRecordTwoValueBranchWithTag",
+                "(II" + TAG_DESC + TAG_DESC + "I)V",
+                false);
+        // Stack: ..., v1, v2  (copies, tags, opcode consumed by method)
         // Emit the original branch — no new labels needed, no VerifyError.
         super.visitJumpInsn(opcode, label);
         // Stack: ... (v1, v2 consumed by branch)
+    }
+
+    // ===== Expression-aware arithmetic propagation =====
+
+    /** Internal name of SymbolicExpressionPropagator runtime class. */
+    private static final String EXPRESSION_PROP_INTERNAL_NAME =
+            "edu/neu/ccs/prl/galette/concolic/knarr/runtime/SymbolicExpressionPropagator";
+
+    /**
+     * Emit expression-aware propagation for a binary int arithmetic instruction.
+     * Replaces TAG_UNION with a call to SymbolicExpressionPropagator.binaryIntOp
+     * that builds a compound Green expression for the result.
+     *
+     * Stack contract (same net effect as TAG_UNION path):
+     *   Entry:  ..., v1, v2  (shadow stack has tag1, tag2 at top)
+     *   Exit:   ..., v1, v2  (shadow stack has resultTag at top)
+     */
+    private void propagateBinaryIntExpression(int opcode) {
+        // Stack: ..., v1, v2
+        super.visitInsn(DUP2);
+        // Stack: ..., v1, v2, v1, v2
+        shadowLocals.peek(1);
+        // Stack: ..., v1, v2, v1, v2, tag1
+        shadowLocals.peek(0);
+        // Stack: ..., v1, v2, v1, v2, tag1, tag2
+        AsmUtil.pushInt(mv, opcode);
+        // Stack: ..., v1, v2, v1, v2, tag1, tag2, opcode
+        super.visitMethodInsn(
+                INVOKESTATIC,
+                EXPRESSION_PROP_INTERNAL_NAME,
+                "binaryIntOp",
+                "(II" + TAG_DESC + TAG_DESC + "I)" + TAG_DESC,
+                false);
+        // Stack: ..., v1, v2, resultTag
+        shadowLocals.pop(2);
+        shadowLocals.push();
+        // Stack: ..., v1, v2  (resultTag stored in shadow stack)
+    }
+
+    /**
+     * Emit expression-aware propagation for a unary int operation (INEG).
+     * Replaces the no-op shadow handling with a call that builds a NEG expression.
+     *
+     * Stack contract:
+     *   Entry:  ..., value  (shadow stack has tag at top)
+     *   Exit:   ..., value  (shadow stack has resultTag at top, possibly different from input)
+     */
+    private void propagateUnaryIntExpression(int opcode) {
+        // Stack: ..., value
+        super.visitInsn(DUP);
+        // Stack: ..., value, value
+        shadowLocals.peek(0);
+        // Stack: ..., value, value, tag
+        AsmUtil.pushInt(mv, opcode);
+        // Stack: ..., value, value, tag, opcode
+        super.visitMethodInsn(
+                INVOKESTATIC, EXPRESSION_PROP_INTERNAL_NAME, "unaryIntOp", "(I" + TAG_DESC + "I)" + TAG_DESC, false);
+        // Stack: ..., value, resultTag
+        shadowLocals.pop(1);
+        shadowLocals.push();
+        // Stack: ..., value  (resultTag stored in shadow stack)
     }
 
     // Note: Automatic switch constraint collection methods removed.

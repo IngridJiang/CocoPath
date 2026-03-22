@@ -679,6 +679,7 @@ public class GaletteSymbolicator {
         GaletteGreenBridge.clearVariableCache();
         GalettePathConstraintBridge.clearSymbolicRegistries();
         GalettePathConstraintBridge.resetGaletteConstraints();
+        SymbolicExpressionPropagator.reset();
         PathUtils.reset();
 
         if (DEBUG) {
@@ -752,6 +753,20 @@ public class GaletteSymbolicator {
     public static void associateTagWithExpression(Tag tag, Expression expression) {
         if (tag != null && expression != null) {
             tagToExpression.put(tag, expression);
+        }
+    }
+
+    /**
+     * Register a concrete value → tag mapping for value-based lookup.
+     * Used by SymbolicExpressionPropagator to make arithmetic results
+     * discoverable at branch points via value-based lookup.
+     *
+     * @param value The concrete value (boxed)
+     * @param tag   The tag to associate
+     */
+    public static void registerValueTag(Object value, Tag tag) {
+        if (value != null && tag != null) {
+            valueToTag.put(value, tag);
         }
     }
 
