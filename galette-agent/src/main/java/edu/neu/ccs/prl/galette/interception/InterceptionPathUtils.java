@@ -6,7 +6,8 @@ import java.util.List;
 /**
  * Minimal runtime for bytecode-level comparison interception.
  *
- * This class is referenced by ComparisonInterceptorVisitor at the bytecode level.
+ * This class is called by bytecode injected by the ComparisonInterceptionTransformer
+ * (inlined in GaletteAgent) at the bytecode level.
  * It must be jlink-safe: no complex static initializers, no System.out, no shutdown hooks.
  *
  * Collected constraints are retrieved via flush() by GalettePathConstraintBridge in knarr-runtime.

@@ -25,7 +25,7 @@ import tools.vitruv.methodologisttemplate.model.model.BrakeSystem;
  *   67 &lt;= aggressiveness &lt;= 100  → sport    (multiplier 1.20)
  *
  * When native bytecode interception is enabled (-Dgalette.concolic.interception.enabled=true),
- * the if-interval comparisons are automatically captured by ComparisonInterceptorVisitor
+ * the if-interval comparisons are automatically captured by native bytecode interception
  * without explicit constraint recording calls.
  */
 @SuppressWarnings("all")
@@ -97,22 +97,14 @@ public class CreateAndConfigureAxleUnitRoutine extends AbstractRoutine {
 
             // Interval dispatch — native bytecode interception captures these comparisons
             // automatically when -Dgalette.concolic.interception.enabled=true is set.
-            InputOutput.<String>println(
-                    "[Reaction:CreateAndConfigureAxleUnit] symbolicAggressiveness=" + symbolicAggressiveness
-                            + " (class=" + symbolicAggressiveness.getClass().getSimpleName() + ")");
             if (symbolicAggressiveness >= 0) {
                 if (symbolicAggressiveness < 34) {
-                    InputOutput.<String>println("[Reaction:CreateAndConfigureAxleUnit] -> off_road branch");
                     _routinesFacade.createOffRoadAxleUnit(system, sourceDisc);
                 } else if (symbolicAggressiveness < 67) {
-                    InputOutput.<String>println("[Reaction:CreateAndConfigureAxleUnit] -> comfort branch");
                     _routinesFacade.createComfortAxleUnit(system, sourceDisc);
                 } else {
-                    InputOutput.<String>println("[Reaction:CreateAndConfigureAxleUnit] -> sport branch");
                     _routinesFacade.createSportAxleUnit(system, sourceDisc);
                 }
-            } else {
-                InputOutput.<String>println("[Reaction:CreateAndConfigureAxleUnit] -> skip branch (< 0)");
             }
             // applyCalibration's match silently fails (no-op) when skip was chosen
             // (no AxleControlUnit correspondence exists for this disc).

@@ -25,7 +25,7 @@ import tools.vitruv.methodologisttemplate.model.model2.AxleControlUnit;
  *   else              → track        (offset +0.5)
  *
  * When native bytecode interception is enabled (-Dgalette.concolic.interception.enabled=true),
- * the if-interval comparisons are automatically captured by ComparisonInterceptorVisitor
+ * the if-interval comparisons are automatically captured by native bytecode interception
  * without explicit constraint recording calls.
  */
 @SuppressWarnings("all")
@@ -128,16 +128,11 @@ public class ApplyCalibrationRoutine extends AbstractRoutine {
 
             // Interval dispatch — native bytecode interception captures these comparisons
             // automatically when -Dgalette.concolic.interception.enabled=true is set.
-            InputOutput.<String>println("[Reaction:ApplyCalibration] symbolicCalibLevel=" + symbolicCalibLevel
-                    + " (class=" + symbolicCalibLevel.getClass().getSimpleName() + ")");
             if (symbolicCalibLevel < 33) {
-                InputOutput.<String>println("[Reaction:ApplyCalibration] -> conservative branch");
                 axleUnit.setCalibrationOffset(-0.5); // conservative
             } else if (symbolicCalibLevel < 67) {
-                InputOutput.<String>println("[Reaction:ApplyCalibration] -> standard branch");
                 axleUnit.setCalibrationOffset(0.0); // standard
             } else {
-                InputOutput.<String>println("[Reaction:ApplyCalibration] -> track branch");
                 axleUnit.setCalibrationOffset(0.5); // track
             }
             double _absDecelThreshold = axleUnit.getAbsDecelThreshold();

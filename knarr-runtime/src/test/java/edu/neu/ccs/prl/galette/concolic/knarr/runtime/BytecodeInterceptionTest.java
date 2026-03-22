@@ -71,7 +71,7 @@ public class BytecodeInterceptionTest {
 
         System.out.println("\n=== Expected Output with Interception ===");
         System.out.println("When run with instrumented Java and Galette agent, you should see:");
-        System.out.println("- Debug output from ComparisonInterceptorVisitor");
+        System.out.println("- Debug output from native bytecode interception");
         System.out.println("- PathUtils.instrumentedDcmpl/Lcmp/Fcmpl messages");
         System.out.println("- Constraint collection messages");
         System.out.println();

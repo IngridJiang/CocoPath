@@ -273,7 +273,8 @@ public class PathUtils {
      * Get the current path condition merged with constraints from native bytecode interception.
      * When native interception is enabled (galette.concolic.interception.enabled=true),
      * this flushes constraints collected by the galette-agent's PathUtils via
-     * ComparisonInterceptorVisitor and merges them into the current PathConditionWrapper.
+     * the ComparisonInterceptionTransformer (in GaletteAgent) and merges them into
+     * the current PathConditionWrapper.
      *
      * When interception is not enabled or not available, behaves identically to getCurPC().
      */
