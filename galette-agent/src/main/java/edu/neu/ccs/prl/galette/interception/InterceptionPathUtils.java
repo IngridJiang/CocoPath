@@ -16,9 +16,7 @@ public final class InterceptionPathUtils {
     private static volatile boolean enabled =
             "true".equals(System.getProperty("galette.concolic.interception.enabled"));
 
-    static {
-        System.out.println("[InterceptionPathUtils] loaded, enabled=" + enabled);
-    }
+    // No static initializer side effects — must be jlink-safe
 
     private static final ThreadLocal<List<Constraint>> PATH_CONDITIONS = ThreadLocal.withInitial(ArrayList::new);
 
@@ -106,9 +104,48 @@ public final class InterceptionPathUtils {
         }
     }
 
+    /**
+     * Record an integer comparison without affecting the result.
+     * Called via DUP2 before the original IF_ICMP* instruction,
+     * so the stack layout is preserved exactly.
+     */
+    public static void recordIcmp(int v1, int v2, String op) {
+        if (!enabled) return;
+        enterMethod();
+        try {
+            if (isEnabled()) {
+                // Compute the result based on the operation
+                int result;
+                switch (op) {
+                    case "EQ":
+                        result = (v1 == v2) ? 1 : 0;
+                        break;
+                    case "NE":
+                        result = (v1 != v2) ? 1 : 0;
+                        break;
+                    case "LT":
+                        result = (v1 < v2) ? 1 : 0;
+                        break;
+                    case "GE":
+                        result = (v1 >= v2) ? 1 : 0;
+                        break;
+                    case "GT":
+                        result = (v1 > v2) ? 1 : 0;
+                        break;
+                    case "LE":
+                        result = (v1 <= v2) ? 1 : 0;
+                        break;
+                    default:
+                        result = 0;
+                }
+                PATH_CONDITIONS.get().add(new Constraint(v1, v2, op, result));
+            }
+        } finally {
+            exitMethod();
+        }
+    }
+
     public static boolean instrumentedIcmpJump(int v1, int v2, String op) {
-        System.out.println("[InterceptionPathUtils] instrumentedIcmpJump called: " + v1 + " " + op + " " + v2
-                + " enabled=" + enabled);
         enterMethod();
         try {
             boolean result;

@@ -93,24 +93,13 @@ public final class GaletteAgent {
                 ClassLoader loader, String className, Class<?> classBeingRedefined, ProtectionDomain pd, byte[] buf) {
             if (classBeingRedefined != null || className == null || isExcluded(className)) return null;
             try {
+                // DUP+void-record preserves stack layout, so frames stay valid.
+                // COMPUTE_MAXS recalculates max stack for the extra DUP2+LDC slots.
                 ClassReader cr = new ClassReader(buf);
-                // Use COMPUTE_MAXS to fix max stack/locals. Pass 0 to accept()
-                // to preserve existing stack map frames from the first pass.
-                ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS) {
-                    @Override
-                    protected String getCommonSuperClass(String type1, String type2) {
-                        return "java/lang/Object";
-                    }
-                };
+                ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
                 cr.accept(new InterceptionClassVisitor(cw), 0);
-                byte[] result = cw.toByteArray();
-                if (result.length != buf.length) {
-                    System.out.println("[Interception2ndPass] Modified: " + className + " (" + buf.length + " -> "
-                            + result.length + ")");
-                }
-                return result;
+                return cw.toByteArray();
             } catch (Throwable t) {
-                System.err.println("[Interception2ndPass] ERROR: " + className + ": " + t);
                 return null;
             }
         }
@@ -138,33 +127,20 @@ public final class GaletteAgent {
             }
         }
 
-        /** Inlined MethodVisitor that replaces comparison instructions with PathUtils calls. */
+        /**
+         * Observes comparison instructions by duplicating operands and recording them
+         * via a void method BEFORE the original instruction executes unchanged.
+         * This preserves the exact stack layout — no frame invalidation.
+         */
         private static final class InterceptionMethodVisitor extends MethodVisitor {
             InterceptionMethodVisitor(MethodVisitor mv) {
                 super(Opcodes.ASM9, mv);
             }
 
             @Override
-            public void visitInsn(int opcode) {
-                switch (opcode) {
-                    case Opcodes.LCMP:
-                        mv.visitMethodInsn(Opcodes.INVOKESTATIC, PATH_UTILS, "instrumentedLcmp", "(JJ)I", false);
-                        break;
-                    case Opcodes.FCMPL:
-                        mv.visitMethodInsn(Opcodes.INVOKESTATIC, PATH_UTILS, "instrumentedFcmpl", "(FF)I", false);
-                        break;
-                    case Opcodes.FCMPG:
-                        mv.visitMethodInsn(Opcodes.INVOKESTATIC, PATH_UTILS, "instrumentedFcmpg", "(FF)I", false);
-                        break;
-                    case Opcodes.DCMPL:
-                        mv.visitMethodInsn(Opcodes.INVOKESTATIC, PATH_UTILS, "instrumentedDcmpl", "(DD)I", false);
-                        break;
-                    case Opcodes.DCMPG:
-                        mv.visitMethodInsn(Opcodes.INVOKESTATIC, PATH_UTILS, "instrumentedDcmpg", "(DD)I", false);
-                        break;
-                    default:
-                        super.visitInsn(opcode);
-                }
+            public void visitMaxs(int maxStack, int maxLocals) {
+                // DUP2 + LDC adds 3 extra stack slots temporarily
+                super.visitMaxs(maxStack + 3, maxLocals);
             }
 
             @Override
@@ -176,22 +152,35 @@ public final class GaletteAgent {
                     case Opcodes.IF_ICMPGE:
                     case Opcodes.IF_ICMPGT:
                     case Opcodes.IF_ICMPLE:
+                        // Two-operand: Stack [v1, v2] → DUP2 → record → original
+                        mv.visitInsn(Opcodes.DUP2);
                         mv.visitLdcInsn(opToString(opcode));
                         mv.visitMethodInsn(
-                                Opcodes.INVOKESTATIC,
-                                PATH_UTILS,
-                                "instrumentedIcmpJump",
-                                "(IILjava/lang/String;)Z",
-                                false);
-                        mv.visitJumpInsn(Opcodes.IFNE, label);
+                                Opcodes.INVOKESTATIC, PATH_UTILS, "recordIcmp", "(IILjava/lang/String;)V", false);
+                        super.visitJumpInsn(opcode, label);
                         break;
-                        // Single-operand jumps (IFEQ/IFNE/IFLT/IFGE/IFGT/IFLE) are NOT
-                        // intercepted: they are ubiquitous in bytecode (boolean checks,
-                        // null checks, loop counters) and produce massive constraint noise.
+                    case Opcodes.IFEQ:
+                    case Opcodes.IFNE:
+                    case Opcodes.IFLT:
+                    case Opcodes.IFGE:
+                    case Opcodes.IFGT:
+                    case Opcodes.IFLE:
+                        // Single-operand: Stack [v] → DUP, ICONST_0, LDC → record(v,0,op) → original
+                        mv.visitInsn(Opcodes.DUP);
+                        mv.visitInsn(Opcodes.ICONST_0);
+                        mv.visitLdcInsn(opToString(opcode));
+                        mv.visitMethodInsn(
+                                Opcodes.INVOKESTATIC, PATH_UTILS, "recordIcmp", "(IILjava/lang/String;)V", false);
+                        super.visitJumpInsn(opcode, label);
+                        break;
                     default:
                         super.visitJumpInsn(opcode, label);
                 }
             }
+
+            // LCMP/DCMPL etc. could be observed similarly with DUP2/DUP2_X2,
+            // but for now we focus on IF_ICMP* which covers the integer comparisons
+            // in the brake reactions.
 
             private static String opToString(int opcode) {
                 switch (opcode) {
