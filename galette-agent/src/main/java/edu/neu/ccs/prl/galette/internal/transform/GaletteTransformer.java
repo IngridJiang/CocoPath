@@ -49,6 +49,9 @@ public class GaletteTransformer {
             // ABSOLUTE MINIMAL exclusions - as in working reference implementation
             "java/lang/Object",
             INTERNAL_PACKAGE_PREFIX,
+            // Exclude interception runtime so Galette does not add shadow methods to it
+            "edu/neu/ccs/prl/galette/interception/",
+            "edu/neu/ccs/prl/galette/PathConstraintAPI",
             // Exclude concolic exploration framework
             "edu/neu/ccs/prl/galette/concolic/",
             // Exclude Green solver framework

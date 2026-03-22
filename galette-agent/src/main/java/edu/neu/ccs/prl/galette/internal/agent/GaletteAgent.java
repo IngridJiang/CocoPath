@@ -34,6 +34,15 @@ public final class GaletteAgent {
         inst.addTransformer(new TransformerWrapper());
         // Register comparison interception as a second-pass transformer.
         if (Boolean.getBoolean("galette.concolic.interception.enabled")) {
+            // Force-load InterceptionPathUtils BEFORE registering the transformer.
+            // Prevents classloader deadlock: when the transformer inserts INVOKESTATIC
+            // references to InterceptionPathUtils into a class being loaded, the JVM
+            // would try to resolve it while holding the ClassLoader lock.
+            try {
+                Class.forName("edu.neu.ccs.prl.galette.interception.InterceptionPathUtils");
+            } catch (ClassNotFoundException e) {
+                throw new RuntimeException("Failed to pre-load InterceptionPathUtils", e);
+            }
             inst.addTransformer(new ComparisonInterceptionTransformer());
         }
     }
@@ -84,31 +93,24 @@ public final class GaletteAgent {
                 ClassLoader loader, String className, Class<?> classBeingRedefined, ProtectionDomain pd, byte[] buf) {
             if (classBeingRedefined != null || className == null || isExcluded(className)) return null;
             try {
+                // TEMPORARY: test if even a no-op re-parse causes the hang
                 ClassReader cr = new ClassReader(buf);
                 ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
-                cr.accept(new InterceptionClassVisitor(cw), ClassReader.EXPAND_FRAMES);
+                cr.accept(cw, ClassReader.EXPAND_FRAMES); // no interception visitor - just re-serialize
                 return cw.toByteArray();
             } catch (Throwable t) {
                 return null;
             }
         }
 
+        /**
+         * Whitelist approach: only intercept classes that contain the user's
+         * comparison logic (Vitruvius-generated reaction/routine classes).
+         * Everything else is excluded to avoid classloader deadlocks and noise.
+         */
         private static boolean isExcluded(String cn) {
-            return cn.startsWith("java/")
-                    || cn.startsWith("javax/")
-                    || cn.startsWith("sun/")
-                    || cn.startsWith("jdk/")
-                    || cn.startsWith("com/sun/")
-                    || cn.startsWith("edu/neu/ccs/prl/galette/internal/")
-                    || cn.startsWith("edu/neu/ccs/prl/galette/interception/")
-                    || cn.startsWith("edu/neu/ccs/prl/galette/concolic/")
-                    || cn.startsWith("edu/neu/ccs/prl/galette/PathConstraintAPI")
-                    || cn.startsWith("za/ac/sun/cs/green/")
-                    || cn.startsWith("edu/gmu/swe/")
-                    || cn.startsWith("org/objectweb/asm/")
-                    || cn.startsWith("org/eclipse/")
-                    || cn.startsWith("tools/vitruv/")
-                    || cn.startsWith("com/google/");
+            // Only intercept MIR-generated reaction/routine classes
+            return !cn.startsWith("mir/");
         }
 
         /** Inlined ClassVisitor that intercepts comparison bytecodes. */
@@ -171,23 +173,9 @@ public final class GaletteAgent {
                                 false);
                         mv.visitJumpInsn(Opcodes.IFNE, label);
                         break;
-                    case Opcodes.IFEQ:
-                    case Opcodes.IFNE:
-                    case Opcodes.IFLT:
-                    case Opcodes.IFGE:
-                    case Opcodes.IFGT:
-                    case Opcodes.IFLE:
-                        // Single-operand: push 0 and use two-operand version
-                        mv.visitInsn(Opcodes.ICONST_0);
-                        mv.visitLdcInsn(opToString(opcode));
-                        mv.visitMethodInsn(
-                                Opcodes.INVOKESTATIC,
-                                PATH_UTILS,
-                                "instrumentedIcmpJump",
-                                "(IILjava/lang/String;)Z",
-                                false);
-                        mv.visitJumpInsn(Opcodes.IFNE, label);
-                        break;
+                        // Single-operand jumps (IFEQ/IFNE/IFLT/IFGE/IFGT/IFLE) are NOT
+                        // intercepted: they are ubiquitous in bytecode (boolean checks,
+                        // null checks, loop counters) and produce massive constraint noise.
                     default:
                         super.visitJumpInsn(opcode, label);
                 }
