@@ -71,6 +71,8 @@ set -x
   -javaagent:"$GALETTE_AGENT" \
   -Dgalette.cache=target/galette/cache \
   -Dgalette.coverage=true \
+  -Dgalette.symbolic.enabled=true \
+  -Dgalette.instrument.prefix=mir/ \
   -Dsymbolic.execution.debug=true \
   -Dgalette.debug=true \
   -Dpath.explorer.max.iterations=30 \

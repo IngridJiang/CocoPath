@@ -5,6 +5,7 @@ import java.util.*;
 import za.ac.sun.cs.green.expr.BinaryOperation;
 import za.ac.sun.cs.green.expr.Expression;
 import za.ac.sun.cs.green.expr.Operation.Operator;
+import za.ac.sun.cs.green.expr.UnaryOperation;
 import za.ac.sun.cs.green.expr.Variable;
 
 /**
@@ -490,12 +491,24 @@ public class PathExplorer {
      * (e.g. {@code LT(var, 34)} → "var", {@code GE(0, var)} → "var").
      * Returns null for domain constraints (AND-expressions) or constants.
      */
+    /**
+     * Extract the primary variable name from an expression.
+     * Handles both simple constraints (var op const) and compound constraints
+     * from expression propagation (e.g., GT(ADD(var(a), const(5)), const(10))).
+     * Recursively searches the expression tree for the first Variable.
+     */
     private String extractPrimaryVarName(Expression expr) {
+        if (expr instanceof Variable) return ((Variable) expr).getName();
+        if (expr instanceof UnaryOperation) {
+            return extractPrimaryVarName(((UnaryOperation) expr).operand);
+        }
         if (!(expr instanceof BinaryOperation)) return null;
         BinaryOperation binOp = (BinaryOperation) expr;
-        if (binOp.left instanceof Variable) return ((Variable) binOp.left).getName();
-        if (binOp.right instanceof Variable) return ((Variable) binOp.right).getName();
-        return null;
+        // Try left subtree first (most common: var or compound expression on left)
+        String left = extractPrimaryVarName(binOp.left);
+        if (left != null) return left;
+        // Then right subtree
+        return extractPrimaryVarName(binOp.right);
     }
 
     /**

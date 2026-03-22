@@ -15,18 +15,23 @@ import tools.vitruv.methodologisttemplate.model.model.BrakeSystem;
  * Routine: createAndConfigureAxleUnit
  *
  * Reads a continuous aggressiveness value from a free-text dialog, wraps it in a
- * symbolic integer covering [-1, 100], then uses if-interval comparisons to choose
- * the axle-unit profile.
+ * symbolic integer covering [-1, 100], then computes a disc-dependent performance
+ * score and uses if-interval comparisons on the score to choose the axle-unit profile.
  *
- * Interval partition:
- *   aggressiveness <  0          → skip    (no AxleControlUnit created)
- *   0  &lt;= aggressiveness &lt;  34   → off_road (multiplier 0.70)
- *   34 &lt;= aggressiveness &lt;  67   → comfort  (multiplier 0.85)
- *   67 &lt;= aggressiveness &lt;= 100  → sport    (multiplier 1.20)
+ * Score calculation (exercises Knarr-style expression propagation via IADD):
+ *   discBonus        = (int)(sourceDisc.getDiameter() / 10.0)   (concrete)
+ *   performanceScore = symbolicAggressiveness + discBonus        (IADD on symbolic + concrete)
  *
- * When native bytecode interception is enabled (-Dgalette.concolic.interception.enabled=true),
- * the if-interval comparisons are automatically captured by native bytecode interception
- * without explicit constraint recording calls.
+ * Interval partition (on performanceScore):
+ *   performanceScore &lt;  0                      → skip
+ *   0  &lt;= performanceScore &lt;  34 + discBonus   → off_road
+ *   34 + discBonus &lt;= performanceScore &lt;  67 + discBonus  → comfort
+ *   67 + discBonus &lt;= performanceScore          → sport
+ *
+ * When bytecode instrumentation is enabled (-Dgalette.symbolic.enabled=true
+ * -Dgalette.instrument.prefix=mir/), the IADD and IF_ICMP* instructions are
+ * automatically intercepted by TagPropagator, building compound expressions
+ * like GT(ADD(var(aggressiveness), const(discBonus)), const(threshold)).
  */
 @SuppressWarnings("all")
 public class CreateAndConfigureAxleUnitRoutine extends AbstractRoutine {
@@ -46,6 +51,22 @@ public class CreateAndConfigureAxleUnitRoutine extends AbstractRoutine {
     private static class Update extends AbstractRoutine.Update {
         public Update(final ReactionExecutionState reactionExecutionState) {
             super(reactionExecutionState);
+        }
+
+        /**
+         * Record an if-comparison constraint via reflection (manual constraint path).
+         * Falls back silently when knarr-runtime is not on the classpath.
+         */
+        private static void recordIfConstraint(String qualifiedName, Integer symbolicValue, String op, int threshold) {
+            if (qualifiedName == null) return;
+            try {
+                Class<?> scClass = Class.forName("edu.neu.ccs.prl.galette.concolic.knarr.runtime.SymbolicComparison");
+                Method m =
+                        scClass.getMethod("symbolicVitruviusIfComparison", Integer.class, String.class, Integer.TYPE);
+                m.invoke(null, symbolicValue, op, threshold);
+            } catch (Exception ignored) {
+                // knarr-runtime not available — running without symbolic execution
+            }
         }
 
         public void updateModels(
@@ -95,14 +116,40 @@ public class CreateAndConfigureAxleUnitRoutine extends AbstractRoutine {
                 }
             }
 
-            // Interval dispatch — native bytecode interception captures these comparisons
-            // automatically when -Dgalette.concolic.interception.enabled=true is set.
-            if (symbolicAggressiveness >= 0) {
-                if (symbolicAggressiveness < 34) {
+            // Compute disc-dependent performance score.
+            // This IADD on a symbolic + concrete value is intercepted by TagPropagator's
+            // expression propagation, producing ADD(var(aggressiveness), const(discBonus)).
+            int discBonus = (int) (sourceDisc.getDiameter() / 10.0);
+            int performanceScore = symbolicAggressiveness + discBonus; // ← IADD (expression propagation)
+            int lowThreshold = 34 + discBonus;
+            int highThreshold = 67 + discBonus;
+
+            InputOutput.<String>println("[Reaction] discBonus=" + discBonus
+                    + ", performanceScore=" + performanceScore
+                    + ", thresholds=[" + lowThreshold + ", " + highThreshold + "]");
+
+            // Interval dispatch on the computed score.
+            // When bytecode instrumentation is active (-Dgalette.symbolic.enabled=true
+            // -Dgalette.instrument.prefix=mir/), TagPropagator intercepts the IF_ICMP*
+            // instructions and records compound constraints like:
+            //   LT(ADD(var(aggressiveness), const(discBonus)), const(lowThreshold))
+            //
+            // For the manual constraint path (no agent), record equivalent constraints
+            // on the raw variable with adjusted thresholds.
+            if (performanceScore >= 0) {
+                if (performanceScore < lowThreshold) {
+                    // Manual constraint fallback: aggressiveness < 34
+                    recordIfConstraint(qualifiedName, symbolicAggressiveness, "GE", 0);
+                    recordIfConstraint(qualifiedName, symbolicAggressiveness, "LT", 34);
                     _routinesFacade.createOffRoadAxleUnit(system, sourceDisc);
-                } else if (symbolicAggressiveness < 67) {
+                } else if (performanceScore < highThreshold) {
+                    // Manual constraint fallback: 34 <= aggressiveness < 67
+                    recordIfConstraint(qualifiedName, symbolicAggressiveness, "GE", 34);
+                    recordIfConstraint(qualifiedName, symbolicAggressiveness, "LT", 67);
                     _routinesFacade.createComfortAxleUnit(system, sourceDisc);
                 } else {
+                    // Manual constraint fallback: aggressiveness >= 67
+                    recordIfConstraint(qualifiedName, symbolicAggressiveness, "GE", 67);
                     _routinesFacade.createSportAxleUnit(system, sourceDisc);
                 }
             }
