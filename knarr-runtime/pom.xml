@@ -67,6 +67,7 @@
         <!-- Vitruvius Amalthea-ASCET Integration -->
         <!-- Option 1: Use internal amalthea-acset-integration module (SIMPLIFIED STUB) -->
         <!-- This requires external Amalthea-acset to be built once for Vitruvius dependencies -->
+        <!--
         <dependency>
             <groupId>edu.neu.ccs.prl.galette</groupId>
             <artifactId>amalthea-acset-consistency</artifactId>
@@ -77,6 +78,7 @@
             <artifactId>amalthea-acset-vsum</artifactId>
             <version>${project.version}</version>
         </dependency>
+        -->
 
         <!-- Option 2 (CURRENT): Use external Amathea-acset repository (FULL VITRUVIUS) -->
         <!-- This provides complete Vitruvius reactions and transformations -->
@@ -102,7 +104,7 @@
 
 
 
-        <!--
+
         <dependency>
             <groupId>edu.neu.ccs.prl.galette</groupId>
             <artifactId>tinybrake-integration-consistency</artifactId>
@@ -113,7 +115,6 @@
             <artifactId>tinybrake-integration-vsum</artifactId>
             <version>${project.version}</version>
         </dependency>
-        -->
 
         <!-- Vitruvius framework dependencies (required for either option) -->
         <dependency>
