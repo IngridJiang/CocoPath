@@ -16,6 +16,10 @@ public final class InterceptionPathUtils {
     private static volatile boolean enabled =
             "true".equals(System.getProperty("galette.concolic.interception.enabled"));
 
+    static {
+        System.out.println("[InterceptionPathUtils] loaded, enabled=" + enabled);
+    }
+
     private static final ThreadLocal<List<Constraint>> PATH_CONDITIONS = ThreadLocal.withInitial(ArrayList::new);
 
     // Recursion guard
@@ -103,6 +107,8 @@ public final class InterceptionPathUtils {
     }
 
     public static boolean instrumentedIcmpJump(int v1, int v2, String op) {
+        System.out.println("[InterceptionPathUtils] instrumentedIcmpJump called: " + v1 + " " + op + " " + v2
+                + " enabled=" + enabled);
         enterMethod();
         try {
             boolean result;

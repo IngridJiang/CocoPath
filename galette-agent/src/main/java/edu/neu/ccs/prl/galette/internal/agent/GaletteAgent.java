@@ -93,14 +93,24 @@ public final class GaletteAgent {
                 ClassLoader loader, String className, Class<?> classBeingRedefined, ProtectionDomain pd, byte[] buf) {
             if (classBeingRedefined != null || className == null || isExcluded(className)) return null;
             try {
-                // Use ClassWriter(cr, 0) to copy frames verbatim from the original class.
-                // COMPUTE_MAXS triggers getCommonSuperClass() which cascades into loading
-                // the Vitruvius class hierarchy during transformation → classloader deadlock.
                 ClassReader cr = new ClassReader(buf);
-                ClassWriter cw = new ClassWriter(cr, 0);
+                // Use COMPUTE_MAXS to fix max stack/locals. Pass 0 to accept()
+                // to preserve existing stack map frames from the first pass.
+                ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS) {
+                    @Override
+                    protected String getCommonSuperClass(String type1, String type2) {
+                        return "java/lang/Object";
+                    }
+                };
                 cr.accept(new InterceptionClassVisitor(cw), 0);
-                return cw.toByteArray();
+                byte[] result = cw.toByteArray();
+                if (result.length != buf.length) {
+                    System.out.println("[Interception2ndPass] Modified: " + className + " (" + buf.length + " -> "
+                            + result.length + ")");
+                }
+                return result;
             } catch (Throwable t) {
+                System.err.println("[Interception2ndPass] ERROR: " + className + ": " + t);
                 return null;
             }
         }
@@ -132,13 +142,6 @@ public final class GaletteAgent {
         private static final class InterceptionMethodVisitor extends MethodVisitor {
             InterceptionMethodVisitor(MethodVisitor mv) {
                 super(Opcodes.ASM9, mv);
-            }
-
-            @Override
-            public void visitMaxs(int maxStack, int maxLocals) {
-                // Pad maxStack: our IF_ICMP* replacement pushes an extra String (LDC)
-                // before the INVOKESTATIC, temporarily increasing stack depth by 1.
-                super.visitMaxs(maxStack + 2, maxLocals);
             }
 
             @Override
