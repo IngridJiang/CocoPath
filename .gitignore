@@ -18,8 +18,9 @@ knarr-runtime/galette-output-*/
 # Path exploration result JSON files
 knarr-runtime/execution_paths*.json
 
-# Classpath file written by mvn dependency:build-classpath
-knarr-runtime/cp.txt
+# Classpath file written by mvn dependency:build-classpath for 
+# knarr and others
+**/cp.txt
 
 # pom.xml backup created by switch-dependency.py during mode switch
 knarr-runtime/pom.xml.bak
@@ -72,3 +73,4 @@ lastClass.txt
 
 # Keep .gitignore files themselves tracked
 !**/.gitignore
+
