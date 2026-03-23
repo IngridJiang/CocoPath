@@ -53,22 +53,6 @@ public class CreateAndConfigureAxleUnitRoutine extends AbstractRoutine {
             super(reactionExecutionState);
         }
 
-        /**
-         * Record an if-comparison constraint via reflection (manual constraint path).
-         * Falls back silently when knarr-runtime is not on the classpath.
-         */
-        private static void recordIfConstraint(String qualifiedName, Integer symbolicValue, String op, int threshold) {
-            if (qualifiedName == null) return;
-            try {
-                Class<?> scClass = Class.forName("edu.neu.ccs.prl.galette.concolic.knarr.runtime.SymbolicComparison");
-                Method m =
-                        scClass.getMethod("symbolicVitruviusIfComparison", Integer.class, String.class, Integer.TYPE);
-                m.invoke(null, symbolicValue, op, threshold);
-            } catch (Exception ignored) {
-                // knarr-runtime not available — running without symbolic execution
-            }
-        }
-
         public void updateModels(
                 final BrakeSystem system,
                 final BrakeDisc sourceDisc,
@@ -129,27 +113,15 @@ public class CreateAndConfigureAxleUnitRoutine extends AbstractRoutine {
                     + ", thresholds=[" + lowThreshold + ", " + highThreshold + "]");
 
             // Interval dispatch on the computed score.
-            // When bytecode instrumentation is active (-Dgalette.symbolic.enabled=true
-            // -Dgalette.instrument.prefix=mir/), TagPropagator intercepts the IF_ICMP*
-            // instructions and records compound constraints like:
-            //   LT(ADD(var(aggressiveness), const(discBonus)), const(lowThreshold))
-            //
-            // For the manual constraint path (no agent), record equivalent constraints
-            // on the raw variable with adjusted thresholds.
+            // TagPropagator intercepts the IF_ICMP* bytecodes automatically and records
+            // compound constraints like LT(ADD(var(aggressiveness), const(discBonus)), const(threshold)).
+            // No manual constraint calls needed — bytecode interception handles everything.
             if (performanceScore >= 0) {
                 if (performanceScore < lowThreshold) {
-                    // Manual constraint fallback: aggressiveness < 34
-                    recordIfConstraint(qualifiedName, symbolicAggressiveness, "GE", 0);
-                    recordIfConstraint(qualifiedName, symbolicAggressiveness, "LT", 34);
                     _routinesFacade.createOffRoadAxleUnit(system, sourceDisc);
                 } else if (performanceScore < highThreshold) {
-                    // Manual constraint fallback: 34 <= aggressiveness < 67
-                    recordIfConstraint(qualifiedName, symbolicAggressiveness, "GE", 34);
-                    recordIfConstraint(qualifiedName, symbolicAggressiveness, "LT", 67);
                     _routinesFacade.createComfortAxleUnit(system, sourceDisc);
                 } else {
-                    // Manual constraint fallback: aggressiveness >= 67
-                    recordIfConstraint(qualifiedName, symbolicAggressiveness, "GE", 67);
                     _routinesFacade.createSportAxleUnit(system, sourceDisc);
                 }
             }
