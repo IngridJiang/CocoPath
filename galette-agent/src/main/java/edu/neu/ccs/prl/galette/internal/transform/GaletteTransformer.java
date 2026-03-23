@@ -42,32 +42,33 @@ public class GaletteTransformer {
     private static final String ANNOTATION_DESC = Type.getDescriptor(GaletteInstrumented.class);
     /**
      * Classes that should not be instrumented.
-     * <p>
-     * Non-null.
+     *
+     * <p>Only the absolute minimum is hardcoded here: {@code java/lang/Object} (cannot be
+     * instrumented) and Galette's own internal runtime (self-referential).  This keeps the
+     * exclusion list compatible with jlink image creation, where JDK classes like String and
+     * HashMap <em>must</em> be instrumented.
+     *
+     * <p>Additional exclusions for application classes (concolic/, green/, etc.) are loaded
+     * at runtime from the system property {@code galette.transform.exclusions} (comma-separated
+     * internal class name prefixes).  JDK classes that were already instrumented during jlink
+     * are automatically skipped via {@link #hasShadowInstrumentation}, so they do not need
+     * to appear in this list at all.
+     *
+     * <p>Non-null.
      */
-    private static final ExclusionList exclusions = new ExclusionList(
-            // ABSOLUTE MINIMAL exclusions - as in working reference implementation
-            "java/lang/Object",
-            INTERNAL_PACKAGE_PREFIX,
-            // Exclude interception runtime so Galette does not add shadow methods to it
-            "edu/neu/ccs/prl/galette/interception/",
-            "edu/neu/ccs/prl/galette/PathConstraintAPI",
-            // Exclude CocoPath infrastructure — no symbolic data flows through these,
-            // and Galette's COMPUTE_MAXS produces invalid stack maps for complex methods.
-            "edu/neu/ccs/prl/galette/concolic/",
-            "edu/neu/ccs/prl/galette/vitruvius/",
-            "edu/neu/ccs/prl/galette/testexamples/",
-            // Exclude Green solver framework
-            "za/ac/sun/cs/green/",
-            "edu/gmu/swe/",
-            // Minimal JVM exclusions to prevent String.hashCode recursion
-            "java/lang/String",
-            "java/lang/StringBuilder",
-            "java/lang/StringBuffer",
-            "java/lang/AbstractStringBuilder",
-            // HashMap to prevent hashCode loops
-            "java/util/HashMap",
-            "java/util/AbstractMap");
+    private static final ExclusionList exclusions = buildExclusionList();
+
+    private static ExclusionList buildExclusionList() {
+        // Hardcoded: only what is needed for jlink compatibility
+        ExclusionList base = new ExclusionList("java/lang/Object", INTERNAL_PACKAGE_PREFIX);
+
+        // Runtime additions from system property (set by -javaagent or run scripts)
+        String extra = System.getProperty("galette.transform.exclusions");
+        if (extra != null && !extra.isEmpty()) {
+            return new ExclusionList(base, extra.split(","));
+        }
+        return base;
+    }
 
     private static TransformationCache cache;
 

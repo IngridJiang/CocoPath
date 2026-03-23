@@ -26,7 +26,27 @@ public final class GaletteAgent {
         premain(agentArgs, inst);
     }
 
+    /**
+     * Default runtime exclusions applied when the agent is loaded via {@code -javaagent}.
+     * These classes don't carry symbolic data and Galette's COMPUTE_MAXS can produce
+     * invalid stack map frames for their complex methods.
+     *
+     * <p>Not needed during jlink (JDK classes are handled by {@code hasShadowInstrumentation}).
+     * Users can override by setting {@code -Dgalette.transform.exclusions=...} before the agent loads.
+     */
+    private static final String DEFAULT_RUNTIME_EXCLUSIONS = String.join(
+            ",",
+            "edu/neu/ccs/prl/galette/interception/",
+            "edu/neu/ccs/prl/galette/PathConstraintAPI",
+            "edu/neu/ccs/prl/galette/concolic/",
+            "za/ac/sun/cs/green/",
+            "edu/gmu/swe/");
+
     public static void premain(String agentArgs, Instrumentation inst) throws IOException {
+        // Set default runtime exclusions if not already specified
+        if (System.getProperty("galette.transform.exclusions") == null) {
+            System.setProperty("galette.transform.exclusions", DEFAULT_RUNTIME_EXCLUSIONS);
+        }
         GaletteLog.initialize(System.err);
         String cachePath = System.getProperty("galette.cache");
         TransformationCache cache = cachePath == null ? null : new TransformationCache(new File(cachePath));
