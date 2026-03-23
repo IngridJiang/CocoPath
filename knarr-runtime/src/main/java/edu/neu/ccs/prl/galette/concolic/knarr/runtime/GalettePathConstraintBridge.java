@@ -1,5 +1,6 @@
 package edu.neu.ccs.prl.galette.concolic.knarr.runtime;
 
+import edu.neu.ccs.prl.galette.internal.runtime.Tag;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,9 +43,9 @@ public class GalettePathConstraintBridge {
                 System.out.println("[GalettePathConstraintBridge] Initialized successfully via PathConstraintAPI");
             }
         } catch (Exception e) {
-            if (DEBUG) {
-                System.out.println("[GalettePathConstraintBridge] PathConstraintAPI not available: " + e.getMessage());
-            }
+            System.err.println("[GalettePathConstraintBridge] WARNING: PathConstraintAPI not available: "
+                    + e.getMessage()
+                    + ". Native bytecode interception constraints will NOT be collected.");
             galettePathUtilsClass = null;
         }
     }
@@ -95,9 +96,9 @@ public class GalettePathConstraintBridge {
             }
             return convertToGreenExpressions(rawConstraints);
         } catch (Exception e) {
-            if (DEBUG) {
-                System.out.println("[GalettePathConstraintBridge] Error flushing constraints: " + e.getMessage());
-            }
+            System.err.println(
+                    "[GalettePathConstraintBridge] ERROR: Failed to flush native constraints: " + e.getMessage());
+            e.printStackTrace();
             return new ArrayList<>();
         }
     }
@@ -127,9 +128,8 @@ public class GalettePathConstraintBridge {
                     skippedConcrete++;
                 }
             } catch (Exception e) {
-                if (DEBUG) {
-                    System.out.println("[GalettePathConstraintBridge] Skipping invalid constraint: " + e.getMessage());
-                }
+                System.err.println(
+                        "[GalettePathConstraintBridge] WARNING: Skipping invalid constraint: " + e.getMessage());
             }
         }
 
@@ -162,12 +162,17 @@ public class GalettePathConstraintBridge {
         String operation = (String) constraintClass.getField("operation").get(constraint);
         int result = (Integer) constraintClass.getField("result").get(constraint);
 
-        // Determine which operand is symbolic (check left first)
-        boolean leftIsSymbolic = isSymbolicValue(value1);
-        Expression leftExpr = leftIsSymbolic ? toSymbolicExpr(value1) : toConstantExpr(value1);
-        Expression rightExpr = leftIsSymbolic ? toConstantExpr(value2) : toExpr(value2);
+        // Check both operands for symbolic status
+        Expression leftExpr = toExpr(value1);
+        Expression rightExpr = toExpr(value2);
 
         if (leftExpr == null || rightExpr == null) {
+            System.err.println("[GalettePathConstraintBridge] WARNING: Could not convert operands to expressions: "
+                    + "value1=" + value1 + " (type="
+                    + (value1 != null ? value1.getClass().getSimpleName() : "null")
+                    + "), value2=" + value2 + " (type="
+                    + (value2 != null ? value2.getClass().getSimpleName() : "null")
+                    + ")");
             return null;
         }
 
@@ -176,7 +181,20 @@ public class GalettePathConstraintBridge {
 
     private static boolean isSymbolicValue(Object value) {
         if (value instanceof Integer) {
-            return symbolicIntRegistry.containsKey((Integer) value);
+            // Check direct registry first (original symbolic inputs)
+            if (symbolicIntRegistry.containsKey((Integer) value)) {
+                return true;
+            }
+            // Also check GaletteSymbolicator's valueToTag for compound expressions
+            // created by SymbolicExpressionPropagator (e.g., x+5 → tag with ADD expression)
+            Tag tag = GaletteSymbolicator.getTagForValue(value);
+            if (tag != null) {
+                Expression expr = GaletteSymbolicator.getExpressionForTag(tag);
+                if (expr != null) {
+                    return true;
+                }
+            }
+            return false;
         }
         if (value instanceof Double || value instanceof Float) {
             double d = value instanceof Float ? (Float) value : (Double) value;
@@ -187,13 +205,30 @@ public class GalettePathConstraintBridge {
 
     private static Expression toSymbolicExpr(Object value) {
         if (value instanceof Integer) {
+            // First try tag-based expression lookup (supports compound expressions from
+            // SymbolicExpressionPropagator, e.g. ADD(var(x), const(5)))
+            Tag tag = GaletteSymbolicator.getTagForValue(value);
+            if (tag != null) {
+                Expression expr = GaletteSymbolicator.getExpressionForTag(tag);
+                if (expr != null) {
+                    if (DEBUG) {
+                        System.out.println(
+                                "[GalettePathConstraintBridge] Tag-based expression for " + value + ": " + expr);
+                    }
+                    return expr;
+                }
+            }
+            // Fall back to symbolic int registry (direct symbolic input variables)
             String name = symbolicIntRegistry.get((Integer) value);
             if (name != null) {
                 if (DEBUG) {
-                    System.out.println("[GalettePathConstraintBridge] Symbolic int: " + name + " = " + value);
+                    System.out.println(
+                            "[GalettePathConstraintBridge] Registry-based symbolic int: " + name + " = " + value);
                 }
                 return new IntVariable(name, Integer.MIN_VALUE, Integer.MAX_VALUE);
             }
+            System.err.println("[GalettePathConstraintBridge] WARNING: Value " + value
+                    + " was identified as symbolic but no expression found in tag store or registry");
         }
         if (value instanceof Double || value instanceof Float) {
             double d = value instanceof Float ? (Float) value : (Double) value;

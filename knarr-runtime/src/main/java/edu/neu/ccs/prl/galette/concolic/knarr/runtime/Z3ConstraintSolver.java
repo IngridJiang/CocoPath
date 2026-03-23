@@ -31,16 +31,19 @@ import za.ac.sun.cs.green.service.z3.Z3JavaTranslator;
 public class Z3ConstraintSolver {
 
     private static final boolean DEBUG = Boolean.getBoolean("z3.solver.debug");
-    private static final boolean USE_Z3 = Boolean.getBoolean("use.z3.solver");
+    /** Z3 is enabled by default. Set -Duse.z3.solver=false to disable (NOT recommended). */
+    private static final boolean USE_Z3 = !Boolean.getBoolean("disable.z3.solver");
+
     private static final int Z3_TIMEOUT_MS = Integer.getInteger("z3.timeout.ms", 10000); // 10s default
-    private static final boolean FALLBACK_TO_SIMPLE = Boolean.getBoolean("z3.fallback.simple");
 
     static {
-        if (DEBUG) {
-            System.out.println("[Z3ConstraintSolver] Configuration:");
-            System.out.println("  USE_Z3: " + USE_Z3);
-            System.out.println("  Z3_TIMEOUT_MS: " + Z3_TIMEOUT_MS);
-            System.out.println("  FALLBACK_TO_SIMPLE: " + FALLBACK_TO_SIMPLE);
+        System.out.println("[Z3ConstraintSolver] Configuration:");
+        System.out.println("  USE_Z3: " + USE_Z3);
+        System.out.println("  Z3_TIMEOUT_MS: " + Z3_TIMEOUT_MS);
+        if (!USE_Z3) {
+            System.err.println("[Z3ConstraintSolver] WARNING: Z3 is DISABLED (-Ddisable.z3.solver=true). "
+                    + "Falling back to simple range-based solver which CANNOT handle compound expressions "
+                    + "(e.g. x+5 > 10). This is NOT recommended.");
         }
     }
 
@@ -52,12 +55,13 @@ public class Z3ConstraintSolver {
      */
     public static InputSolution solveConstraintWithZ3(Expression constraint) {
         if (constraint == null) {
+            System.err.println("[Z3ConstraintSolver] WARNING: solveConstraintWithZ3 called with null constraint");
             return null;
         }
 
         if (!USE_Z3) {
-            // Z3 disabled, use simple solver
-            if (DEBUG) System.out.println("[Z3ConstraintSolver] Z3 disabled, using simple solver");
+            System.err.println("[Z3ConstraintSolver] WARNING: Z3 disabled, using simple range-based solver. "
+                    + "Compound expressions (additions, multiplications in constraints) WILL BE SILENTLY DROPPED.");
             return ConstraintSolver.solveConstraint(constraint);
         }
 
@@ -67,7 +71,6 @@ public class Z3ConstraintSolver {
         }
 
         try {
-            // Try Z3 solver
             InputSolution solution = solveWithZ3(constraint);
 
             if (solution != null && solution.isSatisfiable()) {
@@ -77,24 +80,17 @@ public class Z3ConstraintSolver {
                 return solution;
             } else {
                 if (DEBUG) {
-                    System.out.println("[Z3ConstraintSolver] Z3 returned UNSAT");
+                    System.out.println("[Z3ConstraintSolver] Z3 returned UNSAT for: " + constraint);
                 }
                 return null;
             }
 
         } catch (Exception e) {
-            if (DEBUG) {
-                System.err.println("[Z3ConstraintSolver] Z3 solver failed: " + e.getMessage());
-                e.printStackTrace();
-            }
-
-            if (FALLBACK_TO_SIMPLE) {
-                if (DEBUG) System.out.println("[Z3ConstraintSolver] Falling back to simple solver");
-                return ConstraintSolver.solveConstraint(constraint);
-            } else {
-                // No fallback, return UNSAT
-                return null;
-            }
+            System.err.println("[Z3ConstraintSolver] ERROR: Z3 solver failed for constraint: " + constraint);
+            System.err.println("[Z3ConstraintSolver] Exception: " + e.getMessage());
+            e.printStackTrace();
+            // No silent fallback — report the failure
+            return null;
         }
     }
 
@@ -175,9 +171,15 @@ public class Z3ConstraintSolver {
                     Expr z3Val = model.evaluate(z3Var, true);
                     Object val = extractValue(z3Val);
                     if (val != null) {
-                        sat.add(new AbstractMap.SimpleEntry<>(z3Var.toString(), val));
+                        // Strip Z3's |...| quoting from variable names containing special chars
+                        String varName = z3Var.toString();
+                        if (varName.startsWith("|") && varName.endsWith("|")) {
+                            varName = varName.substring(1, varName.length() - 1);
+                        }
+                        sat.add(new AbstractMap.SimpleEntry<>(varName, val));
                         if (DEBUG) {
-                            System.out.println("[Z3ConstraintSolver]   Variable: " + z3Var + " = " + val);
+                            System.out.println("[Z3ConstraintSolver]   Variable: " + varName + " = " + val + " (type: "
+                                    + val.getClass().getSimpleName() + ")");
                         }
                     }
                 }
@@ -204,9 +206,8 @@ public class Z3ConstraintSolver {
 
             } else {
                 // UNKNOWN or timeout
-                if (DEBUG) {
-                    System.out.println("[Z3ConstraintSolver] Z3 returned UNKNOWN (possibly timeout)");
-                }
+                System.err.println("[Z3ConstraintSolver] WARNING: Z3 returned UNKNOWN (possibly timeout after "
+                        + Z3_TIMEOUT_MS + "ms). Constraint treated as UNSAT: " + constraint);
                 return null;
             }
 

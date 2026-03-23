@@ -133,8 +133,9 @@ public class PathExplorer {
             String variableName = extractTagFromValue(currentInput);
 
             if (pc == null || pc.isEmpty()) {
-                if (DEBUG)
-                    System.out.println("[PathExplorer:exploreInteger] No constraints collected - concrete execution");
+                System.err.println("[PathExplorer:exploreInteger] WARNING: No constraints collected — "
+                        + "execution was fully concrete (value=" + currentInput + "). Symbolic tracking may be lost. "
+                        + "Blindly incrementing as fallback.");
                 Map<String, Object> inputs = new HashMap<>();
                 inputs.put(variableName, currentInput);
                 exploredPaths.add(new PathRecord(iteration, inputs, new ArrayList<>(), endTime - startTime));
@@ -251,11 +252,9 @@ public class PathExplorer {
 
         // If still no value, something went wrong
         if (value == null) {
-            if (DEBUG) {
-                System.out.println(
-                        "[PathExplorer:generateNextInput]Warning: No value found in solution. Available keys: "
-                                + solution.getLabels());
-            }
+            System.err.println("[PathExplorer:generateNextInput] WARNING: Z3 returned SAT but no value could be "
+                    + "extracted. Available keys: " + solution.getLabels()
+                    + ". Expected variable: " + variableName);
         }
 
         if (value instanceof Integer) {
@@ -387,12 +386,11 @@ public class PathExplorer {
             }
 
             if (pc == null || pc.isEmpty()) {
-                if (DEBUG)
-                    System.out.println(
-                            "[PathExplorer:exploreMultipleIntegers] No constraints collected - concrete execution");
+                System.err.println("[PathExplorer:exploreMultipleIntegers] WARNING: No constraints collected — "
+                        + "execution was fully concrete. This means symbolic tracking was lost. "
+                        + "Blindly incrementing first variable as fallback.");
                 Map<String, Object> inputs = new HashMap<>(currentInputs);
                 exploredPaths.add(new PathRecord(iteration, inputs, new ArrayList<>(), endTime - startTime));
-                // Try incrementing first variable
                 currentInputsList = incrementInputsList(currentInputsList);
                 iteration++;
                 continue;
@@ -465,8 +463,10 @@ public class PathExplorer {
                 if (domainConstraint == null) {
                     domainConstraint = c;
                 } else if (!domainConstraint.toString().contains(cStr)) {
-                    // Only add if not already covered (avoids duplicating same var's domain)
                     domainConstraint = new BinaryOperation(Operator.AND, domainConstraint, c);
+                } else if (DEBUG) {
+                    System.out.println("[PathExplorer:extractDomainConstraints] Skipping duplicate domain constraint "
+                            + "(string-based dedup): " + cStr);
                 }
             }
         }
@@ -641,16 +641,27 @@ public class PathExplorer {
                 // Pad to numVars in case previousInputs is shorter
                 while (result.size() < numVars) result.add(0);
 
+                boolean anyMapped = false;
                 for (String key : solution.getLabels()) {
                     Object value = solution.getValue(key);
                     Integer idx = varNameToIndex.get(key);
                     if (idx != null && value instanceof Number && idx < result.size()) {
                         result.set(idx, ((Number) value).intValue());
+                        anyMapped = true;
                         if (DEBUG) {
                             System.out.println("[PathExplorer:generateNextMultiVarInputList] " + "Set result[" + idx
                                     + "] (" + key + ") = " + result.get(idx));
                         }
+                    } else {
+                        System.err.println("[PathExplorer:generateNextMultiVarInputList] WARNING: Z3 returned "
+                                + "variable '" + key + "' = " + value + " but could not map to input index. "
+                                + "Known variables: " + varNameToIndex.keySet());
                     }
+                }
+                if (!anyMapped) {
+                    System.err.println("[PathExplorer:generateNextMultiVarInputList] ERROR: Z3 returned SAT "
+                            + "but NO variables could be mapped to inputs. Solution: " + solution
+                            + ". Result is unchanged from previous inputs.");
                 }
 
                 // When we backtracked to an outer variable (tryVarIdx < last index),
@@ -685,7 +696,13 @@ public class PathExplorer {
                     return negVarIdx != null && negVarIdx >= exhaustedIdx;
                 }
                 // Fallback: string-based check for the exhausted variable
-                return neg.toString().contains(exhaustedVarName);
+                boolean stringMatch = neg.toString().contains(exhaustedVarName);
+                if (stringMatch) {
+                    System.err.println("[PathExplorer] WARNING: Using fragile string-based match to remove "
+                            + "negation for var '" + exhaustedVarName + "': " + neg
+                            + ". extractPrimaryVarName returned null — expression structure may be unexpected.");
+                }
+                return stringMatch;
             });
 
             if (DEBUG) {
@@ -787,7 +804,8 @@ public class PathExplorer {
                 System.out.println("[PathExplorer:extractTagFromValue]   - No tag found on value");
             }
         } catch (Exception e) {
-            System.out.println("[PathExplorer:extractTagFromValue]   - Error extracting tag: " + e.getMessage());
+            System.err.println("[PathExplorer:extractTagFromValue] WARNING: Error extracting tag from value " + selected
+                    + ": " + e.getMessage());
         }
         return null;
     }

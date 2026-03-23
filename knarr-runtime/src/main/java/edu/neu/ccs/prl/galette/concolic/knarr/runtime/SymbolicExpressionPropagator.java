@@ -58,7 +58,8 @@ public class SymbolicExpressionPropagator {
 
         Operator op = opcodeToOperator(opcode);
         if (op == null) {
-            // Unsupported opcode — fall back to union-only (dependency tracking)
+            System.err.println("[SymbolicExpressionPropagator:binaryIntOp] WARNING: Unsupported opcode " + opcode
+                    + " — falling back to Tag.union (dependency-only). Symbolic expression LOST.");
             return Tag.union(t1, t2);
         }
 
@@ -99,7 +100,9 @@ public class SymbolicExpressionPropagator {
 
         Operator op = unaryOpcodeToOperator(opcode);
         if (op == null) {
-            return t; // Unsupported, keep original tag
+            System.err.println("[SymbolicExpressionPropagator:unaryIntOp] WARNING: Unsupported unary opcode " + opcode
+                    + " — keeping original tag. Symbolic expression NOT propagated.");
+            return t;
         }
 
         Expression resultExpr = new UnaryOperation(op, operandExpr);
@@ -141,6 +144,9 @@ public class SymbolicExpressionPropagator {
             if (expr != null) {
                 return expr;
             }
+            System.err.println("[SymbolicExpressionPropagator:lookupOrConstant] WARNING: Tag " + tag
+                    + " exists but has no expression. Falling back to IntConstant(" + value + "). "
+                    + "Symbolic expression LOST for this operand.");
         }
         return new IntConstant(value);
     }

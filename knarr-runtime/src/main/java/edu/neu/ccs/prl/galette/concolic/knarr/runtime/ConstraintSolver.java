@@ -86,6 +86,9 @@ public class ConstraintSolver {
         List<SimpleConstraint> simpleConstraints = extractSimpleConstraints(constraint);
 
         if (simpleConstraints.isEmpty()) {
+            System.err.println("[ConstraintSolver] WARNING: No simple (var op const) constraints could be extracted "
+                    + "from: " + constraint + ". This likely means the constraint contains compound expressions "
+                    + "that require Z3.");
             return null;
         }
 
@@ -186,14 +189,17 @@ public class ConstraintSolver {
             return null; // Empty range
         }
 
-        // Search for a valid value in the range
-        for (int candidate = minValue; candidate <= maxValue && candidate < minValue + 1000; candidate++) {
+        // Search for a valid value in the range (limited to 1000 candidates)
+        int searchLimit = Math.min(maxValue, minValue + 1000);
+        for (int candidate = minValue; candidate <= searchLimit; candidate++) {
             if (!excludedValues.contains(candidate)) {
                 return candidate;
             }
         }
 
-        // No valid value found
+        // No valid value found within search window
+        System.err.println("[ConstraintSolver] WARNING: No valid value found in range [" + minValue + ", " + maxValue
+                + "] after scanning 1000 candidates. " + excludedValues.size() + " values excluded.");
         return null;
     }
 
@@ -236,6 +242,12 @@ public class ConstraintSolver {
                     varName = ((Variable) binOp.right).getName();
                     constValue = getConstantValue(binOp.left);
                     op = flipOperator(op);
+                } else {
+                    // COMPOUND EXPRESSION: e.g. ADD(var(x), const(5)) > const(10)
+                    // The simple solver CANNOT handle this — Z3 is required.
+                    System.err.println("[ConstraintSolver] WARNING: Dropping compound constraint that simple solver "
+                            + "cannot handle: " + expr + ". Use Z3 solver (-Ddisable.z3.solver not set) for "
+                            + "arithmetic expressions in constraints.");
                 }
 
                 if (varName != null && constValue != null) {
@@ -244,7 +256,17 @@ public class ConstraintSolver {
             } else if (op == Operator.AND || op == Operator.OR) {
                 extractSimpleConstraintsRecursive(binOp.left, result);
                 extractSimpleConstraintsRecursive(binOp.right, result);
+            } else {
+                System.err.println("[ConstraintSolver] WARNING: Unsupported operator in constraint: " + op
+                        + " in expression: " + expr);
             }
+        } else if (expr != null
+                && !(expr instanceof Variable)
+                && !(expr instanceof IntConstant)
+                && !(expr instanceof RealConstant)
+                && !(expr instanceof StringConstant)) {
+            System.err.println("[ConstraintSolver] WARNING: Unexpected expression type in constraint: "
+                    + expr.getClass().getSimpleName() + ": " + expr);
         }
     }
 

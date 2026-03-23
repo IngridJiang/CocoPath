@@ -137,7 +137,8 @@ public class PathUtils {
                 // Add constraint if this creates a new symbolic relationship
                 getCurPC().addConstraint(expr);
             } else {
-                // Unsupported operation, treat as concrete
+                System.err.println("[PathUtils:performLongOp] WARNING: Unsupported long opcode " + op
+                        + ". Symbolic tag DROPPED — result treated as concrete.");
                 result.tag = null;
                 result.value = performConcreteLongOp(lVal, rVal, op);
             }
@@ -422,7 +423,8 @@ public class PathUtils {
      */
     public static void addSwitchConstraint(Tag tag, int concreteValue) {
         if (tag == null || tag.isEmpty()) {
-            // Fallback to string-based constraint with default name
+            System.err.println("[PathUtils:addSwitchConstraint] WARNING: null/empty tag for switch value "
+                    + concreteValue + ". Using fallback name 'switch_value'.");
             addSwitchConstraint("switch_value", concreteValue);
             return;
         }
@@ -431,7 +433,8 @@ public class PathUtils {
             // Extract symbolic expression from tag
             Expression varExpr = GaletteGreenBridge.tagToExpression(tag);
             if (varExpr == null) {
-                // Create a new symbolic variable based on tag
+                System.err.println("[PathUtils:addSwitchConstraint] WARNING: No expression for tag " + tag
+                        + ". Creating synthetic variable.");
                 String varName = "tagged_var_" + tag.toString().hashCode();
                 varExpr = new IntVariable(varName, Integer.MIN_VALUE, Integer.MAX_VALUE);
             }
@@ -446,8 +449,9 @@ public class PathUtils {
                 System.out.println("[PathUtils] Added tagged switch constraint: " + varExpr + " == " + concreteValue);
             }
         } catch (Exception e) {
-            System.err.println("[PathUtils] Failed to add tagged switch constraint: " + e.getMessage());
-            // Fallback to string-based
+            System.err.println(
+                    "[PathUtils:addSwitchConstraint] ERROR: Failed to add tagged switch constraint: " + e.getMessage());
+            System.err.println("[PathUtils:addSwitchConstraint] Using fallback name 'switch_value'.");
             addSwitchConstraint("switch_value", concreteValue);
         }
     }
@@ -462,7 +466,9 @@ public class PathUtils {
      */
     public static void addSwitchConstraint(Tag tag, int concreteValue, int[] allCases) {
         if (tag == null || tag.isEmpty()) {
-            // Fallback to simple constraint
+            System.err.println("[PathUtils:addSwitchConstraint] WARNING: null/empty tag for switch value "
+                    + concreteValue + " with " + (allCases != null ? allCases.length : 0)
+                    + " cases. Using fallback name 'switch_value'.");
             addSwitchConstraint("switch_value", concreteValue);
             return;
         }
@@ -470,6 +476,8 @@ public class PathUtils {
         try {
             Expression varExpr = GaletteGreenBridge.tagToExpression(tag);
             if (varExpr == null) {
+                System.err.println("[PathUtils:addSwitchConstraint] WARNING: No expression for tag " + tag
+                        + ". Creating synthetic variable.");
                 String varName = "tagged_switch_" + tag.toString().hashCode();
                 varExpr = new IntVariable(varName, Integer.MIN_VALUE, Integer.MAX_VALUE);
             }
@@ -512,7 +520,9 @@ public class PathUtils {
                         + " (cases: " + java.util.Arrays.toString(allCases) + ")");
             }
         } catch (Exception e) {
-            System.err.println("[PathUtils] Failed to add switch constraint with cases: " + e.getMessage());
+            System.err.println("[PathUtils:addSwitchConstraint] ERROR: Failed to add switch constraint with cases: "
+                    + e.getMessage());
+            System.err.println("[PathUtils:addSwitchConstraint] Using fallback name 'switch_value'.");
             addSwitchConstraint("switch_value", concreteValue);
         }
     }
@@ -527,18 +537,21 @@ public class PathUtils {
      */
     public static void recordBranchConstraint(Tag tag, int opcode, boolean branchTaken) {
         if (tag == null) {
-            return; // No symbolic tag, skip constraint collection
+            return; // No symbolic tag — concrete value, this is normal
         }
 
         try {
             Expression expr = GaletteGreenBridge.tagToGreenExpression(tag, 0);
             if (expr == null) {
+                System.err.println("[PathUtils:recordBranchConstraint] WARNING: Tag " + tag
+                        + " could not be converted to Green expression. Branch constraint NOT recorded.");
                 return;
             }
 
             // Convert opcode to Green operator
             Operator op = getOperatorForBranchOpcode(opcode, branchTaken);
             if (op == null) {
+                System.err.println("[PathUtils:recordBranchConstraint] WARNING: Unsupported branch opcode " + opcode);
                 return;
             }
 
@@ -625,14 +638,20 @@ public class PathUtils {
 
         Tag tag = GaletteSymbolicator.getTagForValue(Integer.valueOf(v1));
         if (tag == null) {
+            System.err.println("[PathUtils:recordStoredTwoValueBranchConstraint] WARNING: No tag found for value " + v1
+                    + ". Branch constraint (v1=" + v1 + " op v2=" + v2 + " opcode=" + opcode + ") NOT recorded.");
             return;
         }
         Expression varExpr = GaletteSymbolicator.getExpressionForTag(tag);
         if (varExpr == null) {
+            System.err.println("[PathUtils:recordStoredTwoValueBranchConstraint] WARNING: Tag found but no expression "
+                    + "for tag " + tag + " (value=" + v1 + "). Branch constraint NOT recorded.");
             return;
         }
         Operator op = getTwoValueOperatorForOpcode(opcode, branchTaken);
         if (op == null) {
+            System.err.println("[PathUtils:recordStoredTwoValueBranchConstraint] WARNING: Unsupported opcode " + opcode
+                    + ". Branch constraint NOT recorded.");
             return;
         }
         Expression constraint = new BinaryOperation(op, varExpr, new IntConstant(v2));
@@ -657,14 +676,20 @@ public class PathUtils {
     public static void recordBranchConstraintFromValue(int concreteValue, int opcode, boolean branchTaken) {
         Tag tag = GaletteSymbolicator.getTagForValue(Integer.valueOf(concreteValue));
         if (tag == null) {
+            System.err.println("[PathUtils:recordBranchConstraintFromValue] WARNING: No tag found for value "
+                    + concreteValue + ". Branch constraint (opcode=" + opcode + ") NOT recorded.");
             return;
         }
         Expression varExpr = GaletteSymbolicator.getExpressionForTag(tag);
         if (varExpr == null) {
+            System.err.println("[PathUtils:recordBranchConstraintFromValue] WARNING: Tag found but no expression "
+                    + "for tag " + tag + " (value=" + concreteValue + "). Branch constraint NOT recorded.");
             return;
         }
         Operator op = getOperatorForBranchOpcode(opcode, branchTaken);
         if (op == null) {
+            System.err.println("[PathUtils:recordBranchConstraintFromValue] WARNING: Unsupported opcode " + opcode
+                    + ". Branch constraint NOT recorded.");
             return;
         }
         Expression constraint = new BinaryOperation(op, varExpr, new IntConstant(0));
@@ -687,11 +712,22 @@ public class PathUtils {
     public static void testAndRecordSingleValueBranch(int value, int opcode) {
         boolean taken = testSingleValueCondition(value, opcode);
         Tag tag = GaletteSymbolicator.getTagForValue(Integer.valueOf(value));
-        if (tag == null) return;
+        if (tag == null) {
+            System.err.println("[PathUtils:testAndRecordSingleValueBranch] WARNING: No tag for value " + value
+                    + ". Branch constraint (opcode=" + opcode + ", taken=" + taken + ") NOT recorded.");
+            return;
+        }
         Expression varExpr = GaletteSymbolicator.getExpressionForTag(tag);
-        if (varExpr == null) return;
+        if (varExpr == null) {
+            System.err.println("[PathUtils:testAndRecordSingleValueBranch] WARNING: No expression for tag " + tag
+                    + " (value=" + value + "). Branch constraint NOT recorded.");
+            return;
+        }
         Operator op = getOperatorForBranchOpcode(opcode, taken);
-        if (op == null) return;
+        if (op == null) {
+            System.err.println("[PathUtils:testAndRecordSingleValueBranch] WARNING: Unsupported opcode " + opcode);
+            return;
+        }
         getCurPC().addConstraint(new BinaryOperation(op, varExpr, new IntConstant(0)));
         if (GaletteSymbolicator.DEBUG) {
             System.out.println("[PathUtils:testAndRecordSingleValueBranch] Recorded: " + varExpr + " " + op
@@ -729,11 +765,22 @@ public class PathUtils {
     public static void testAndRecordTwoValueBranch(int v1, int v2, int opcode) {
         boolean taken = testTwoValueCondition(v1, v2, opcode);
         Tag tag = GaletteSymbolicator.getTagForValue(Integer.valueOf(v1));
-        if (tag == null) return;
+        if (tag == null) {
+            System.err.println("[PathUtils:testAndRecordTwoValueBranch] WARNING: No tag for value " + v1
+                    + ". Branch constraint (v1=" + v1 + " op v2=" + v2 + " opcode=" + opcode + ") NOT recorded.");
+            return;
+        }
         Expression varExpr = GaletteSymbolicator.getExpressionForTag(tag);
-        if (varExpr == null) return;
+        if (varExpr == null) {
+            System.err.println("[PathUtils:testAndRecordTwoValueBranch] WARNING: No expression for tag " + tag
+                    + ". Branch constraint NOT recorded.");
+            return;
+        }
         Operator op = getTwoValueOperatorForOpcode(opcode, taken);
-        if (op == null) return;
+        if (op == null) {
+            System.err.println("[PathUtils:testAndRecordTwoValueBranch] WARNING: Unsupported opcode " + opcode);
+            return;
+        }
         getCurPC().addConstraint(new BinaryOperation(op, varExpr, new IntConstant(v2)));
         if (GaletteSymbolicator.DEBUG) {
             System.out.println("[PathUtils:testAndRecordTwoValueBranch] Recorded: " + varExpr + " " + op + " " + v2
@@ -773,12 +820,24 @@ public class PathUtils {
      * @param opcode the single-value branch opcode (IFEQ=153 .. IFLE=158)
      */
     public static void testAndRecordSingleValueBranchWithTag(int value, Tag tag, int opcode) {
-        if (tag == null || tag.isEmpty()) return;
+        if (tag == null || tag.isEmpty()) {
+            // No tag means value is not symbolic — this is normal for concrete values
+            return;
+        }
         Expression varExpr = GaletteSymbolicator.getExpressionForTag(tag);
-        if (varExpr == null) return;
+        if (varExpr == null) {
+            System.err.println("[PathUtils:testAndRecordSingleValueBranchWithTag] WARNING: Tag " + tag
+                    + " has no associated expression. Branch constraint NOT recorded (value=" + value
+                    + ", opcode=" + opcode + ").");
+            return;
+        }
         boolean taken = testSingleValueCondition(value, opcode);
         Operator op = getOperatorForBranchOpcode(opcode, taken);
-        if (op == null) return;
+        if (op == null) {
+            System.err.println(
+                    "[PathUtils:testAndRecordSingleValueBranchWithTag] WARNING: Unsupported opcode " + opcode);
+            return;
+        }
         getCurPC().addConstraint(new BinaryOperation(op, varExpr, new IntConstant(0)));
         if (GaletteSymbolicator.DEBUG) {
             System.out.println("[PathUtils:testAndRecordSingleValueBranchWithTag] Recorded: " + varExpr + " " + op
@@ -805,12 +864,17 @@ public class PathUtils {
 
         // At least one side must be symbolic for a meaningful constraint
         if (leftExpr instanceof IntConstant && rightExpr instanceof IntConstant) {
+            // Both concrete — no symbolic constraint to record (this is normal)
             return;
         }
 
         boolean taken = testTwoValueCondition(v1, v2, opcode);
         Operator op = getTwoValueOperatorForOpcode(opcode, taken);
-        if (op == null) return;
+        if (op == null) {
+            System.err.println("[PathUtils:testAndRecordTwoValueBranchWithTag] WARNING: Unsupported opcode " + opcode
+                    + " for two-value branch (v1=" + v1 + ", v2=" + v2 + ").");
+            return;
+        }
         getCurPC().addConstraint(new BinaryOperation(op, leftExpr, rightExpr));
         if (GaletteSymbolicator.DEBUG) {
             System.out.println("[PathUtils:testAndRecordTwoValueBranchWithTag] Recorded: " + leftExpr + " " + op + " "
@@ -827,6 +891,9 @@ public class PathUtils {
             if (expr != null) {
                 return expr;
             }
+            System.err.println("[PathUtils:resolveExpression] WARNING: Tag " + tag
+                    + " exists but has no expression. Falling back to IntConstant(" + concreteValue + "). "
+                    + "This means a symbolic expression was lost.");
         }
         return new IntConstant(concreteValue);
     }

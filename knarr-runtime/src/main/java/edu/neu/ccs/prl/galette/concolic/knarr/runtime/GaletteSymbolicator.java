@@ -139,7 +139,9 @@ public class GaletteSymbolicator {
 
             return symbolicTag;
         } catch (Exception e) {
-            System.err.println("Error creating symbolic int: " + e.getMessage());
+            System.err.println("[GaletteSymbolicator:makeSymbolicInt] ERROR: Failed to create symbolic int '" + label
+                    + "' = " + concreteValue + ": " + e.getMessage());
+            e.printStackTrace();
             return null;
         }
     }
@@ -202,7 +204,10 @@ public class GaletteSymbolicator {
             // First iteration - create new tag
             Tag newTag = makeSymbolicInt(qualifiedName, concreteValue);
             if (newTag == null) {
-                return concreteValue; // Return untagged value on error
+                System.err.println("[GaletteSymbolicator:getOrMakeSymbolicInt] ERROR: makeSymbolicInt returned null "
+                        + "for '" + qualifiedName + "'. Returning UNTAGGED value " + concreteValue
+                        + " — symbolic tracking LOST for this variable.");
+                return concreteValue;
             }
 
             // Store for reuse in future iterations
@@ -232,9 +237,12 @@ public class GaletteSymbolicator {
             return taggedValue;
 
         } catch (Exception e) {
-            System.err.println("[GaletteSymbolicator:getOrMakeSymbolicInt] Error: " + e.getMessage());
+            System.err.println("[GaletteSymbolicator:getOrMakeSymbolicInt] ERROR: Exception for '" + qualifiedName
+                    + "' = " + concreteValue + ": " + e.getMessage());
             e.printStackTrace();
-            return concreteValue; // Return untagged value on error
+            System.err.println("[GaletteSymbolicator:getOrMakeSymbolicInt] Returning UNTAGGED value — "
+                    + "symbolic tracking LOST for this variable.");
+            return concreteValue;
         }
     }
 
@@ -266,7 +274,9 @@ public class GaletteSymbolicator {
 
             return symbolicTag;
         } catch (Exception e) {
-            System.err.println("Error creating symbolic long: " + e.getMessage());
+            System.err.println("[GaletteSymbolicator:makeSymbolicLong] ERROR: Failed to create symbolic long '" + label
+                    + "' = " + concreteValue + ": " + e.getMessage());
+            e.printStackTrace();
             return null;
         }
     }
@@ -301,7 +311,9 @@ public class GaletteSymbolicator {
 
             return symbolicTag;
         } catch (Exception e) {
-            System.err.println("Error creating symbolic double: " + e.getMessage());
+            System.err.println("[GaletteSymbolicator:makeSymbolicDouble] ERROR: Failed to create symbolic double '"
+                    + label + "' = " + concreteValue + ": " + e.getMessage());
+            e.printStackTrace();
             return null;
         }
     }
@@ -333,7 +345,9 @@ public class GaletteSymbolicator {
 
             return symbolicTag;
         } catch (Exception e) {
-            System.err.println("Error creating symbolic string: " + e.getMessage());
+            System.err.println("[GaletteSymbolicator:makeSymbolicString] ERROR: Failed to create symbolic string '"
+                    + label + "' = \"" + concreteValue + "\": " + e.getMessage());
+            e.printStackTrace();
             return null;
         }
     }
@@ -394,7 +408,9 @@ public class GaletteSymbolicator {
 
             return solution;
         } catch (Exception e) {
-            System.err.println("Error solving path condition: " + e.getMessage());
+            System.err.println("[GaletteSymbolicator:solvePathCondition] ERROR: Failed to solve path condition: "
+                    + e.getMessage());
+            e.printStackTrace();
             return null;
         }
     }
