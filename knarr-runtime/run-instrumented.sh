@@ -60,9 +60,9 @@ CP="${SCRIPT_DIR}/target/classes:${SCRIPT_DIR}/target/test-classes:$(cat "${SCRI
 
 echo "Classpath entries: $(echo "$CP" | tr ':' '\n' | wc -l)"
 
+# Clear stale Galette transformation cache (avoids VerifyError from exclusion changes)
+rm -rf target/galette/cache/ 2>/dev/null || true
 mkdir -p target/galette/cache
-# Clear stale cache entries for CocoPath classes (avoids VerifyError from exclusion changes)
-rm -rf target/galette/cache/edu.neu.ccs.prl.galette.concolic.* 2>/dev/null || true
 
 MAIN_CLASS="edu.neu.ccs.prl.galette.vitruvius.AutomaticVitruvMultiVarPathExploration"
 

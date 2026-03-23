@@ -464,15 +464,16 @@ else
     echo "      Main class: AutomaticVitruvPathExploration (single-variable)"
 fi
 
-# Build the project first to ensure everything is compiled
-echo "      Building project..."
-mvn compile -U -Dcheckstyle.skip=true -q
+# Build the project — must include 'package' for galette-agent so the JAR
+# contains the current exclusion list (concolic/ classes must NOT be instrumented).
+echo "      Building project (including galette-agent JAR)..."
+mvn package -U -DskipTests -Dcheckstyle.skip=true -Dgalette.skip=true -q -pl knarr-runtime -am
 
 # Check if instrumented Java is available
 INSTRUMENTED_JAVA="target/galette/java"
 if [ ! -x "$INSTRUMENTED_JAVA/bin/java" ]; then
-    echo "ERROR: Instrumented Java not found. Building it now..."
-    mvn process-test-resources -U -Dcheckstyle.skip=true -q
+    echo "      Building instrumented JRE..."
+    mvn process-resources -U -Dcheckstyle.skip=true -q
 fi
 
 # Resolve Galette agent
@@ -498,9 +499,10 @@ CP="target/classes${CP_SEP}target/test-classes${CP_SEP}$(cat cp.txt)"
 
 echo "      Using instrumented JVM with Galette agent"
 
-# Clear stale Galette transformation cache entries for CocoPath classes
-# (avoids VerifyError from cached instrumented bytecode when exclusions change)
-rm -rf target/galette/cache/edu.neu.ccs.prl.galette.concolic.* 2>/dev/null || true
+# Clear stale Galette transformation cache to avoid VerifyError from
+# cached instrumented bytecode when exclusions or agent code changes.
+rm -rf target/galette/cache/ 2>/dev/null || true
+mkdir -p target/galette/cache
 
 # Expression propagation flags: enable Knarr-style symbolic expression propagation
 # for mir/ classes (tinybrake routines). TagPropagator will intercept IADD etc.
