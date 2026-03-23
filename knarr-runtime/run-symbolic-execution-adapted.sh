@@ -498,14 +498,19 @@ CP="target/classes${CP_SEP}target/test-classes${CP_SEP}$(cat cp.txt)"
 
 echo "      Using instrumented JVM with Galette agent"
 
-# No extra JVM flags needed: constraint recording for brake modes uses explicit
-# PathUtils.addIfComparisonConstraint calls in the reactions (mirroring Amalthea's
-# addSwitchConstraint pattern), so TagPropagator branch instrumentation is not required.
-SYMBOLIC_FLAG=""
+# Clear stale Galette transformation cache entries for CocoPath classes
+# (avoids VerifyError from cached instrumented bytecode when exclusions change)
+rm -rf target/galette/cache/edu.neu.ccs.prl.galette.concolic.* 2>/dev/null || true
+
+# Expression propagation flags: enable Knarr-style symbolic expression propagation
+# for mir/ classes (tinybrake routines). TagPropagator will intercept IADD etc.
+# and build compound Green expressions for branch predicates.
+SYMBOLIC_FLAG="-Dgalette.symbolic.enabled=true -Dgalette.instrument.prefix=mir/"
+echo "      Expression propagation ENABLED for mir/ classes"
 
 # Native bytecode interception: intercepts comparison operations at bytecode level
 if [ "$USE_INTERCEPTION" = true ]; then
-    SYMBOLIC_FLAG="-Dgalette.concolic.interception.enabled=true -Dgalette.concolic.interception.debug=true -Dpath.explorer.debug=true"
+    SYMBOLIC_FLAG="$SYMBOLIC_FLAG -Dgalette.concolic.interception.enabled=true -Dgalette.concolic.interception.debug=true -Dpath.explorer.debug=true"
     echo "      Native bytecode interception ENABLED"
 fi
 
