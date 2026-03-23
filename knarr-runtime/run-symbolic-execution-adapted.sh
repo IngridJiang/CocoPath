@@ -464,10 +464,11 @@ else
     echo "      Main class: AutomaticVitruvPathExploration (single-variable)"
 fi
 
-# Build the project — must include 'package' for galette-agent so the JAR
-# contains the current exclusion list (concolic/ classes must NOT be instrumented).
-echo "      Building project (including galette-agent JAR)..."
-mvn package -U -DskipTests -Dcheckstyle.skip=true -Dgalette.skip=true -q -pl knarr-runtime -am
+# Build galette-agent JAR first (must have current exclusion list) then knarr-runtime.
+echo "      Building galette-agent JAR..."
+mvn package -f ../pom.xml -U -DskipTests -Dcheckstyle.skip=true -Dgalette.skip=true -q -pl galette-agent
+echo "      Building knarr-runtime..."
+mvn compile -U -Dcheckstyle.skip=true -q
 
 # Check if instrumented Java is available
 INSTRUMENTED_JAVA="target/galette/java"
@@ -499,9 +500,10 @@ CP="target/classes${CP_SEP}target/test-classes${CP_SEP}$(cat cp.txt)"
 
 echo "      Using instrumented JVM with Galette agent"
 
-# Clear stale Galette transformation cache to avoid VerifyError from
-# cached instrumented bytecode when exclusions or agent code changes.
-rm -rf target/galette/cache/ 2>/dev/null || true
+# Preserve the Galette transformation cache — it contains pre-instrumented bytecode
+# for vitruvius/ classes that the jlink's GaletteTransformer produces with bad stack
+# maps on a fresh run. The cached versions are verified and working.
+# Only clear if you also rebuild the jlink image (rm -rf target/galette/java).
 mkdir -p target/galette/cache
 
 # Expression propagation flags: enable Knarr-style symbolic expression propagation

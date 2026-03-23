@@ -52,8 +52,11 @@ public class GaletteTransformer {
             // Exclude interception runtime so Galette does not add shadow methods to it
             "edu/neu/ccs/prl/galette/interception/",
             "edu/neu/ccs/prl/galette/PathConstraintAPI",
-            // Exclude concolic exploration framework
+            // Exclude CocoPath infrastructure — no symbolic data flows through these,
+            // and Galette's COMPUTE_MAXS produces invalid stack maps for complex methods.
             "edu/neu/ccs/prl/galette/concolic/",
+            "edu/neu/ccs/prl/galette/vitruvius/",
+            "edu/neu/ccs/prl/galette/testexamples/",
             // Exclude Green solver framework
             "za/ac/sun/cs/green/",
             "edu/gmu/swe/",

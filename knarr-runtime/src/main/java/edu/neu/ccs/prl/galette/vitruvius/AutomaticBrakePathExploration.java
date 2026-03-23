@@ -1,15 +1,16 @@
 package edu.neu.ccs.prl.galette.vitruvius;
 
-import edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathConditionWrapper;
+import edu.neu.ccs.prl.galette.concolic.knarr.runtime.BrakePathExecutor;
 import edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathExplorer;
-import edu.neu.ccs.prl.galette.concolic.knarr.runtime.PathUtils;
-import java.lang.reflect.Method;
-import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
+
+/*
+ * NOTE: This class is instrumented by Galette at load time. Complex bytecode patterns
+ * (lambdas, invokedynamic) can produce VerifyError due to Galette's COMPUTE_MAXS not
+ * generating correct stack map frames. Keep the main method simple — delegate complex
+ * logic to the executor class which lives in the excluded concolic/ package.
+ */
 
 /**
  * Automatic path exploration for TinyBrakeVSUM: single-disc scenario.
@@ -70,78 +71,11 @@ public class AutomaticBrakePathExploration {
         System.out.println(
                 "[AutomaticBrakePathExploration:main] Expected paths: up to 10 (4 profile intervals × 3 calib intervals; skip has no calib)");
 
-        final Object finalTestInstance = testInstance;
-        List<PathExplorer.PathRecord> paths = explorer.exploreMultipleIntegers(initialValues, inputs -> {
-            return executeWithInputs(finalTestInstance, inputs);
-        });
+        // Use BrakePathExecutor (in the excluded concolic/ package) to avoid
+        // Galette instrumentation of the lambda/complex execution logic.
+        List<PathExplorer.PathRecord> paths =
+                explorer.exploreMultipleIntegers(initialValues, new BrakePathExecutor(testInstance));
 
-        // Display results
-        System.out.println("\n[AutomaticBrakePathExploration:main] Results");
-        System.out.println("[AutomaticBrakePathExploration:main] Total paths explored: " + paths.size());
-        System.out.println();
-        for (PathExplorer.PathRecord path : paths) {
-            System.out.println(path);
-        }
-
-        // Export results
-        AutomaticVitruvPathExplorationHelper.exportMultiVarResults(paths, "execution_paths_brake.json");
-
-        System.out.println("\n[AutomaticBrakePathExploration:main] Complete");
-        System.out.println("[AutomaticBrakePathExploration:main] Results saved to: execution_paths_brake.json");
-        System.out.println("[AutomaticBrakePathExploration:main] Generated models saved to: galette-output-brake-*/");
-    }
-
-    /**
-     * Execute TinyBrake transformation with two symbolic inputs.
-     *
-     * <p>Calls insertBrakeDisc(Path, int profileChoice, int calibChoice). Constraint collection
-     * happens inside the reactions via GaletteSymbolicator.getOrMakeSymbolicInt() and
-     * PathUtils.addIfComparisonConstraint().
-     */
-    private static PathConditionWrapper executeWithInputs(Object testInstance, Map<String, Object> inputs) {
-        // Extract values in sorted key order (var_0 = profileChoice, var_1 = calibChoice)
-        List<String> sortedKeys = new ArrayList<>(inputs.keySet());
-        Collections.sort(sortedKeys);
-
-        List<Integer> values = new ArrayList<>();
-        for (String key : sortedKeys) {
-            values.add((Integer) inputs.get(key));
-        }
-        while (values.size() < 2) {
-            values.add(0);
-        }
-
-        int profileChoice = values.get(0);
-        int calibChoice = values.get(1);
-
-        System.out.println("[AutomaticBrakePathExploration:execute] profileChoice=" + profileChoice + ", calibChoice="
-                + calibChoice);
-
-        // Create output directory for this execution (cleaned if stale)
-        Path workDir = AutomaticVitruvPathExplorationHelper.createWorkingDirectory(
-                "galette-output-brake", profileChoice + "_" + calibChoice);
-
-        // Reset path condition (preserves GaletteSymbolicator label→tag mappings for tag reuse)
-        PathUtils.resetPC();
-
-        try {
-            // insertBrakeDisc takes (Path, int, int) - use int.class for reflection lookup
-            Method insertBrakeDisc =
-                    testInstance.getClass().getMethod("insertBrakeDisc", Path.class, int.class, int.class);
-            insertBrakeDisc.invoke(testInstance, workDir, profileChoice, calibChoice);
-            System.out.println("[AutomaticBrakePathExploration:execute] Vitruvius transformation executed");
-        } catch (Exception e) {
-            System.err.println("[AutomaticBrakePathExploration:execute] Error: "
-                    + e.getClass().getName() + ": " + e.getMessage());
-            if (e.getCause() != null) {
-                System.err.println("  Cause: " + e.getCause().getClass().getName() + ": "
-                        + e.getCause().getMessage());
-            }
-            e.printStackTrace();
-        }
-
-        PathConditionWrapper pc = PathUtils.getCurPCWithNativeConstraints();
-        System.out.println("[AutomaticBrakePathExploration:execute] Constraints collected: " + pc.size());
-        return pc;
+        BrakePathExecutor.printAndExportResults(paths);
     }
 }
